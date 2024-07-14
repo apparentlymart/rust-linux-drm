@@ -55,6 +55,37 @@ impl Card {
         Ok(&mut into[..v.name_len])
     }
 
+    #[inline(always)]
+    pub fn get_device_cap(&self, capability: DeviceCap) -> Result<u64, Error> {
+        self.get_device_cap_raw(capability.into())
+    }
+
+    #[inline]
+    pub fn get_device_cap_raw(&self, capability: ioctl::DrmCap) -> Result<u64, Error> {
+        let mut s = ioctl::DrmGetCap {
+            capability,
+            value: 0,
+        };
+        self.f.ioctl(ioctl::DRM_IOCTL_GET_CAP, &mut s)?;
+        Ok(s.value)
+    }
+
+    #[inline(always)]
+    pub fn set_client_cap(&self, capability: ClientCap, value: u64) -> Result<(), Error> {
+        self.set_client_cap_raw(capability.into(), value)
+    }
+
+    #[inline]
+    pub fn set_client_cap_raw(
+        &self,
+        capability: ioctl::DrmClientCap,
+        value: u64,
+    ) -> Result<(), Error> {
+        let s = ioctl::DrmSetClientCap { capability, value };
+        self.f.ioctl(ioctl::DRM_IOCTL_SET_CLIENT_CAP, &s)?;
+        Ok(())
+    }
+
     #[inline]
     pub fn become_master(&mut self) -> Result<(), Error> {
         self.f.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ())?;
@@ -108,5 +139,52 @@ pub struct ApiVersion {
 impl core::fmt::Display for ApiVersion {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("{}.{}.{}", self.major, self.minor, self.patch))
+    }
+}
+
+#[repr(u64)]
+#[non_exhaustive]
+pub enum DeviceCap {
+    DumbBuffer = ioctl::DRM_CAP_DUMB_BUFFER.0,
+    VBlankHighCrtc = ioctl::DRM_CAP_VBLANK_HIGH_CRTC.0,
+    DumbPreferredDepth = ioctl::DRM_CAP_DUMB_PREFERRED_DEPTH.0,
+    DumbPreferShadow = ioctl::DRM_CAP_DUMB_PREFER_SHADOW.0,
+    Prime = ioctl::DRM_CAP_PRIME.0,
+    TimestampMonotonic = ioctl::DRM_CAP_TIMESTAMP_MONOTONIC.0,
+    AsyncPageFlip = ioctl::DRM_CAP_ASYNC_PAGE_FLIP.0,
+    CursorWidth = ioctl::DRM_CAP_CURSOR_WIDTH.0,
+    CursorHeight = ioctl::DRM_CAP_CURSOR_HEIGHT.0,
+    Addfb2Modifiers = ioctl::DRM_CAP_ADDFB2_MODIFIERS.0,
+    PageFlipTarget = ioctl::DRM_CAP_PAGE_FLIP_TARGET.0,
+    CrtcInVblankEvent = ioctl::DRM_CAP_CRTC_IN_VBLANK_EVENT.0,
+    Syncobj = ioctl::DRM_CAP_SYNCOBJ.0,
+    SyncobjTimeline = ioctl::DRM_CAP_SYNCOBJ_TIMELINE.0,
+}
+
+impl From<DeviceCap> for ioctl::DrmCap {
+    #[inline(always)]
+    fn from(value: DeviceCap) -> Self {
+        // We always use the raw value as the enum representation,
+        // so this conversion is free.
+        ioctl::DrmCap(value as u64)
+    }
+}
+
+#[repr(u64)]
+#[non_exhaustive]
+pub enum ClientCap {
+    Stereo3d = ioctl::DRM_CLIENT_CAP_STEREO_3D.0,
+    UniversalPlanes = ioctl::DRM_CLIENT_CAP_UNIVERSAL_PLANES.0,
+    Atomic = ioctl::DRM_CLIENT_CAP_ATOMIC.0,
+    AspectRatio = ioctl::DRM_CLIENT_CAP_ASPECT_RATIO.0,
+    WritebackConnectors = ioctl::DRM_CLIENT_CAP_WRITEBACK_CONNECTORS.0,
+}
+
+impl From<ClientCap> for ioctl::DrmClientCap {
+    #[inline(always)]
+    fn from(value: ClientCap) -> Self {
+        // We always use the raw value as the enum representation,
+        // so this conversion is free.
+        ioctl::DrmClientCap(value as u64)
     }
 }
