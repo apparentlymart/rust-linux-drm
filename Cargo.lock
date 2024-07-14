@@ -12,18 +12,18 @@ dependencies = [
 
 [[package]]
 name = "linux-io"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f11d16e5d6a5b463bc9dd54bcc2109407cb98e01bb211edb3349ad3c38d4605"
+checksum = "3b5a435bc58fccdaa227c0744f5f7ce49f2d60fc94629de98c386c08f6cdd80e"
 dependencies = [
  "linux-unsafe",
 ]
 
 [[package]]
 name = "linux-unsafe"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30ac833a5dac990dfd781cb6aed462deb369636d5406daa190dc258e63d689fb"
+checksum = "2c138441a23d3e1db94e8b581f35c1b1b097340b489b46c64d734cb06060ac37"
 dependencies = [
  "static_assertions",
 ]

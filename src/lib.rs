@@ -1,11 +1,10 @@
 #![no_std]
 
-use core::ops::{Deref, DerefMut};
-
 /// Low-level `ioctl`-based access to DRM devices.
 pub mod ioctl;
+pub mod result;
 
-const ENOTTY: linux_io::result::Error = linux_io::result::Error(25);
+use result::{Error, InitError};
 
 #[repr(transparent)]
 pub struct Card {
@@ -37,64 +36,56 @@ impl Card {
         Self { f }
     }
 
-    pub fn into_master(self) -> Result<CardMaster, (linux_io::result::Error, Self)> {
-        if let Err(e) = self.f.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ()) {
-            return Err((e, self));
-        }
-        Ok(CardMaster { card: self })
+    pub fn api_version(&self) -> Result<ApiVersion, Error> {
+        let mut v = ioctl::DrmVersion::zeroed();
+        self.f.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        Ok(ApiVersion {
+            major: v.version_major as i64,
+            minor: v.version_minor as i64,
+            patch: v.version_patchlevel as i64,
+        })
     }
 
+    pub fn read_driver_name<'a>(&self, into: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
+        let mut v = ioctl::DrmVersion::zeroed();
+        let ptr = into.as_mut_ptr();
+        v.name_len = into.len();
+        v.name = ptr as *mut _;
+        self.f.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        Ok(&mut into[..v.name_len])
+    }
+
+    #[inline]
+    pub fn become_master(&mut self) -> Result<(), Error> {
+        self.f.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ())?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn drop_master(&mut self) -> Result<(), Error> {
+        self.f.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ())?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn close(self) -> linux_io::result::Result<()> {
         let f = self.take_file();
         f.close()
     }
 
+    #[inline(always)]
     pub fn take_file(self) -> linux_io::File<ioctl::DrmCardDevice> {
         self.f
     }
 
+    #[inline(always)]
     pub fn borrow_file(&self) -> &linux_io::File<ioctl::DrmCardDevice> {
         &self.f
     }
 
+    #[inline(always)]
     pub fn borrow_file_mut(&mut self) -> &mut linux_io::File<ioctl::DrmCardDevice> {
         &mut self.f
-    }
-}
-
-pub struct CardMaster {
-    card: Card,
-}
-
-impl CardMaster {
-    pub fn drop_master(self) -> Result<Card, (linux_io::result::Error, Self)> {
-        if let Err(e) = self.f.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ()) {
-            return Err((e, self));
-        }
-        Ok(self.card)
-    }
-
-    pub fn close(self) -> linux_io::result::Result<()> {
-        let f = self.take_file();
-        f.close()
-    }
-
-    pub fn take_file(self) -> linux_io::File<ioctl::DrmCardDevice> {
-        self.card.f
-    }
-}
-
-impl Deref for CardMaster {
-    type Target = Card;
-
-    fn deref(&self) -> &Self::Target {
-        &self.card
-    }
-}
-
-impl DerefMut for CardMaster {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.card
     }
 }
 
@@ -108,29 +99,14 @@ impl<D> TryFrom<linux_io::File<D>> for Card {
 }
 
 #[derive(Debug)]
-pub enum InitError {
-    NotDrmCard,
-    Other(linux_io::result::Error),
+pub struct ApiVersion {
+    pub major: i64,
+    pub minor: i64,
+    pub patch: i64,
 }
 
-impl Into<linux_io::result::Error> for InitError {
-    fn into(self) -> linux_io::result::Error {
-        match self {
-            InitError::NotDrmCard => ENOTTY,
-            InitError::Other(e) => e,
-        }
-    }
-}
-
-impl From<linux_io::result::Error> for InitError {
-    fn from(value: linux_io::result::Error) -> Self {
-        match value {
-            ENOTTY => {
-                // ENOTTY, so the file doesn't support this ioctl request
-                // and so presumably isn't a DRM card.
-                InitError::NotDrmCard
-            }
-            _ => InitError::Other(value),
-        }
+impl core::fmt::Display for ApiVersion {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("{}.{}.{}", self.major, self.minor, self.patch))
     }
 }

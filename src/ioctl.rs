@@ -96,11 +96,11 @@ pub struct DrmVersion {
     pub version_minor: int,
     pub version_patchlevel: int,
     pub name_len: usize,
-    pub name: *const i8,
+    pub name: *mut i8,
     pub date_len: usize,
-    pub date: *const i8,
+    pub date: *mut i8,
     pub desc_len: usize,
-    pub desc: *const i8,
+    pub desc: *mut i8,
 }
 
 impl DrmVersion {
