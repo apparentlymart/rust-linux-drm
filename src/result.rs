@@ -46,6 +46,13 @@ impl Into<linux_io::result::Error> for Error {
     }
 }
 
+impl From<alloc::collections::TryReserveError> for Error {
+    #[inline(always)]
+    fn from(_: alloc::collections::TryReserveError) -> Self {
+        Self::SystemMem
+    }
+}
+
 #[derive(Debug)]
 pub enum InitError {
     NotDrmCard,

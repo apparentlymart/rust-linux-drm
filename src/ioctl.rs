@@ -1,13 +1,10 @@
 use core::ffi::c_int as int;
 use core::ffi::c_ulong as ulong;
-use core::mem::MaybeUninit;
 
-use linux_io::fd::ioctl::ioctl_write;
-use linux_io::fd::ioctl::FromIoctlResult;
-use linux_io::fd::ioctl::IoctlReq;
-use linux_io::fd::ioctl::IoctlReqWrite;
-use linux_io::fd::ioctl::{ioctl_no_arg, IoDevice, IoctlReqNoArgs};
-use linux_unsafe::args::AsRawV;
+use linux_io::fd::ioctl::{
+    ioctl_no_arg, ioctl_write, ioctl_writeread, IoDevice, IoctlReqNoArgs, IoctlReqWrite,
+    IoctlReqWriteRead,
+};
 
 pub struct DrmCardDevice;
 
@@ -33,62 +30,6 @@ const fn _IOR<T>(nr: ulong) -> ulong {
 #[allow(non_snake_case)]
 const fn _IOWR<T>(nr: ulong) -> ulong {
     linux_io::fd::ioctl::_IOWR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as u64)
-}
-
-#[doc(hidden)]
-#[repr(transparent)]
-pub struct IoctlReqWriteRead<Device: IoDevice, Arg, Result = int>
-where
-    *const Arg: AsRawV,
-{
-    request: ulong,
-    _phantom: core::marker::PhantomData<(Device, Arg, Result)>,
-}
-
-unsafe impl<'a, Arg, Result> IoctlReq<'a, DrmCardDevice>
-    for IoctlReqWriteRead<DrmCardDevice, Arg, Result>
-where
-    *const Arg: AsRawV,
-    Arg: 'a,
-    Result: 'a + FromIoctlResult<int>,
-{
-    type ExtArg = &'a mut Arg;
-    type TempMem = ();
-    type RawArg = *mut Arg;
-    type Result = Result;
-
-    #[inline(always)]
-    fn prepare_ioctl_args(
-        &self,
-        arg: &Self::ExtArg,
-        _: &mut MaybeUninit<Self::TempMem>,
-    ) -> (ulong, *mut Arg) {
-        (self.request, (*arg) as *const Arg as *mut Arg)
-    }
-
-    #[inline(always)]
-    fn prepare_ioctl_result(
-        &self,
-        ret: int,
-        _: &Self::ExtArg,
-        _: &MaybeUninit<Self::TempMem>,
-    ) -> Self::Result {
-        Result::from_ioctl_result(&ret)
-    }
-}
-
-const unsafe fn ioctl_writeread<Device, Arg, Result>(
-    request: ulong,
-) -> IoctlReqWriteRead<Device, Arg, Result>
-where
-    *mut Result: AsRawV,
-    Device: IoDevice,
-    Result: Copy,
-{
-    IoctlReqWriteRead::<Device, Arg, Result> {
-        request,
-        _phantom: core::marker::PhantomData,
-    }
 }
 
 macro_rules! impl_zeroed {
@@ -221,3 +162,24 @@ pub const DRM_CLIENT_CAP_ASPECT_RATIO: DrmClientCap = DrmClientCap(4);
  * also supporting DRM_CLIENT_CAP_ATOMIC
  */
 pub const DRM_CLIENT_CAP_WRITEBACK_CONNECTORS: DrmClientCap = DrmClientCap(5);
+
+#[repr(C)]
+pub struct DrmModeCardRes {
+    pub fb_id_ptr: u64,
+    pub crtc_id_ptr: u64,
+    pub connector_id_ptr: u64,
+    pub encoder_id_ptr: u64,
+    pub count_fbs: u32,
+    pub count_crtcs: u32,
+    pub count_connectors: u32,
+    pub count_encoders: u32,
+    pub min_width: u32,
+    pub max_width: u32,
+    pub min_height: u32,
+    pub max_height: u32,
+}
+
+impl_zeroed!(DrmModeCardRes);
+
+pub const DRM_IOCTL_MODE_GETRESOURCES: IoctlReqWriteRead<DrmCardDevice, DrmModeCardRes, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCardRes>(0xa0)) };

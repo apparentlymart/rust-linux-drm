@@ -1,9 +1,13 @@
 #![no_std]
 
+extern crate alloc;
+
 /// Low-level `ioctl`-based access to DRM devices.
 pub mod ioctl;
 pub mod result;
 
+use alloc::vec::Vec;
+use linux_io::fd::ioctl::IoctlReq;
 use result::{Error, InitError};
 
 #[repr(transparent)]
@@ -26,9 +30,10 @@ impl Card {
         // probe is successful, which therefore suggests that
         // this ought to be a DRM card device.
         let f: linux_io::File<ioctl::DrmCardDevice> = unsafe { f.to_device(ioctl::DrmCardDevice) };
+        let ret = Self { f };
         let mut v = ioctl::DrmVersion::zeroed();
-        f.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
-        Ok(Self { f })
+        ret.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        Ok(ret)
     }
 
     pub unsafe fn from_file_unchecked<D>(f: linux_io::File<D>) -> Self {
@@ -38,7 +43,7 @@ impl Card {
 
     pub fn api_version(&self) -> Result<ApiVersion, Error> {
         let mut v = ioctl::DrmVersion::zeroed();
-        self.f.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
         Ok(ApiVersion {
             major: v.version_major as i64,
             minor: v.version_minor as i64,
@@ -51,8 +56,21 @@ impl Card {
         let ptr = into.as_mut_ptr();
         v.name_len = into.len();
         v.name = ptr as *mut _;
-        self.f.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
         Ok(&mut into[..v.name_len])
+    }
+
+    pub fn driver_name(&self) -> Result<Vec<u8>, Error> {
+        let mut v = ioctl::DrmVersion::zeroed();
+        self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        let len = v.name_len;
+        let mut ret = vec_with_capacity(len)?;
+        v = ioctl::DrmVersion::zeroed();
+        v.name_len = len;
+        v.name = ret.as_mut_ptr() as *mut _;
+        self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
+        unsafe { ret.set_len(v.name_len) };
+        Ok(ret)
     }
 
     #[inline(always)]
@@ -66,7 +84,7 @@ impl Card {
             capability,
             value: 0,
         };
-        self.f.ioctl(ioctl::DRM_IOCTL_GET_CAP, &mut s)?;
+        self.ioctl(ioctl::DRM_IOCTL_GET_CAP, &mut s)?;
         Ok(s.value)
     }
 
@@ -82,20 +100,86 @@ impl Card {
         value: u64,
     ) -> Result<(), Error> {
         let s = ioctl::DrmSetClientCap { capability, value };
-        self.f.ioctl(ioctl::DRM_IOCTL_SET_CLIENT_CAP, &s)?;
+        self.ioctl(ioctl::DRM_IOCTL_SET_CLIENT_CAP, &s)?;
         Ok(())
     }
 
     #[inline]
     pub fn become_master(&mut self) -> Result<(), Error> {
-        self.f.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ())?;
+        self.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ())?;
         Ok(())
     }
 
     #[inline]
     pub fn drop_master(&mut self) -> Result<(), Error> {
-        self.f.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ())?;
+        self.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ())?;
         Ok(())
+    }
+
+    pub fn resources(&self) -> Result<CardResources, Error> {
+        // The sets of resources can potentially change due to hotplug events
+        // while we're producing this result, and so we need to keep retrying
+        // until we get a consistent result.
+        loop {
+            let mut r = ioctl::DrmModeCardRes::zeroed();
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
+            let fb_count = r.count_fbs as usize;
+            let connector_count = r.count_connectors as usize;
+            let crtc_count = r.count_crtcs as usize;
+            let encoder_count = r.count_encoders as usize;
+
+            let mut fb_ids = vec_with_capacity::<u32>(fb_count)?;
+            let mut connector_ids = vec_with_capacity::<u32>(connector_count)?;
+            let mut crtc_ids = vec_with_capacity::<u32>(crtc_count)?;
+            let mut encoder_ids = vec_with_capacity::<u32>(encoder_count)?;
+
+            r = ioctl::DrmModeCardRes::zeroed();
+            r.count_fbs = fb_count as u32;
+            r.fb_id_ptr = fb_ids.as_mut_ptr() as u64;
+            r.count_connectors = connector_count as u32;
+            r.connector_id_ptr = connector_ids.as_mut_ptr() as u64;
+            r.count_crtcs = crtc_count as u32;
+            r.crtc_id_ptr = crtc_ids.as_mut_ptr() as u64;
+            r.count_encoders = encoder_count as u32;
+            r.encoder_id_ptr = encoder_ids.as_mut_ptr() as u64;
+
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
+            // If any of the counts changed since our original call then the kernel
+            // would not have populated the arrays and we'll need to retry and
+            // hope that we don't collide with hotplugging next time.
+            if r.count_fbs as usize != fb_count {
+                continue;
+            }
+            if r.count_connectors as usize != connector_count {
+                continue;
+            }
+            if r.count_crtcs as usize != crtc_count {
+                continue;
+            }
+            if r.count_encoders as usize != encoder_count {
+                continue;
+            }
+
+            // Safety: We ensured the slices capacities above, and ensured
+            // that the kernel has populated the number of ids we expected
+            // in each case.
+            unsafe {
+                fb_ids.set_len(fb_count);
+                connector_ids.set_len(connector_count);
+                crtc_ids.set_len(crtc_count);
+                encoder_ids.set_len(encoder_count);
+            };
+            return Ok(CardResources {
+                fb_ids,
+                connector_ids,
+                crtc_ids,
+                encoder_ids,
+                min_width: r.min_width,
+                max_width: r.max_width,
+                min_height: r.min_height,
+                max_height: r.max_height,
+            });
+        }
     }
 
     #[inline]
@@ -118,6 +202,28 @@ impl Card {
     pub fn borrow_file_mut(&mut self) -> &mut linux_io::File<ioctl::DrmCardDevice> {
         &mut self.f
     }
+
+    fn ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
+        &'a self,
+        request: Req,
+        arg: Req::ExtArg,
+    ) -> linux_io::result::Result<Req::Result> {
+        // All DRM ioctls can potentially be interrupted if our process
+        // receives a signal while we're waiting, so we'll keep retrying
+        // until we get a non-interrupted result.
+        //
+        // This requires some unsafe trickery because the borrow checker
+        // doesn't understand that only the final non-interrupted call
+        // will actually make use of "arg".
+        let arg_ptr = &arg as *const _;
+        loop {
+            let arg = unsafe { core::ptr::read(arg_ptr) };
+            let ret = self.f.ioctl(request, arg);
+            if !matches!(ret, Err(linux_io::result::EINTR)) {
+                return ret;
+            }
+        }
+    }
 }
 
 impl<D> TryFrom<linux_io::File<D>> for Card {
@@ -127,6 +233,18 @@ impl<D> TryFrom<linux_io::File<D>> for Card {
     fn try_from(value: linux_io::File<D>) -> Result<Self, InitError> {
         Card::from_file(value)
     }
+}
+
+#[derive(Debug)]
+pub struct CardResources {
+    pub fb_ids: Vec<u32>,
+    pub crtc_ids: Vec<u32>,
+    pub connector_ids: Vec<u32>,
+    pub encoder_ids: Vec<u32>,
+    pub min_width: u32,
+    pub max_width: u32,
+    pub min_height: u32,
+    pub max_height: u32,
 }
 
 #[derive(Debug)]
@@ -187,4 +305,16 @@ impl From<ClientCap> for ioctl::DrmClientCap {
         // so this conversion is free.
         ioctl::DrmClientCap(value as u64)
     }
+}
+
+// Returns a vector that is guaranteed to have the given capacity exactly, or
+// an error if there isn't enough memory to reserve that capacity.
+//
+// This is intended for situations where the kernel will then populate the
+// reserved buffer and then the caller will set the length to something no
+// greater than the capacity before returning.
+fn vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, alloc::collections::TryReserveError> {
+    let mut ret = Vec::<T>::new();
+    ret.try_reserve_exact(capacity)?;
+    Ok(ret)
 }

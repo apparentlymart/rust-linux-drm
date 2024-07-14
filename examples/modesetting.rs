@@ -5,10 +5,8 @@ fn main() -> std::io::Result<()> {
     card.become_master().map_err(map_err)?;
 
     {
-        let mut name = vec![0_u8; 64];
-        let name = &mut name[..];
-        let name = card.read_driver_name(name).map_err(map_err)?;
-        let name = String::from_utf8_lossy(name);
+        let name = card.driver_name().map_err(map_err)?;
+        let name = String::from_utf8_lossy(&name);
         println!("Driver name: {name}");
     }
 
@@ -26,6 +24,9 @@ fn main() -> std::io::Result<()> {
 
     card.set_client_cap(ClientCap::UniversalPlanes, 1)
         .map_err(map_err)?;
+
+    let resources = card.resources().map_err(map_err)?;
+    println!("resources: {resources:#?}");
 
     Ok(())
 }
