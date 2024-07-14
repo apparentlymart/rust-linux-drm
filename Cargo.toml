@@ -1,0 +1,8 @@
+[package]
+name = "linux-drm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+linux-io = "0.6.1"
+linux-unsafe = "0.9.1"
