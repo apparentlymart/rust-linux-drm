@@ -4,10 +4,13 @@ extern crate alloc;
 
 /// Low-level `ioctl`-based access to DRM devices.
 pub mod ioctl;
+/// Types and other symbols used for modesetting.
+pub mod modeset;
 pub mod result;
 
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
+use modeset::{ModeInfo, ModeProp};
 use result::{Error, InitError};
 
 #[repr(transparent)]
@@ -116,7 +119,7 @@ impl Card {
         Ok(())
     }
 
-    pub fn resources(&self) -> Result<CardResources, Error> {
+    pub fn resources(&self) -> Result<modeset::CardResources, Error> {
         // The sets of resources can potentially change due to hotplug events
         // while we're producing this result, and so we need to keep retrying
         // until we get a consistent result.
@@ -169,7 +172,7 @@ impl Card {
                 crtc_ids.set_len(crtc_count);
                 encoder_ids.set_len(encoder_count);
             };
-            return Ok(CardResources {
+            return Ok(modeset::CardResources {
                 fb_ids,
                 connector_ids,
                 crtc_ids,
@@ -178,6 +181,95 @@ impl Card {
                 max_width: r.max_width,
                 min_height: r.min_height,
                 max_height: r.max_height,
+            });
+        }
+    }
+
+    pub fn connector_state(&self, connector_id: u32) -> Result<modeset::ConnectorState, Error> {
+        // Hotplug events can cause the state to change between our calls, so
+        // we'll keep retrying until we get a consistent result.
+        loop {
+            let mut tmp = ioctl::DrmModeGetConnector::zeroed();
+            tmp.connector_id = connector_id;
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETCONNECTOR, &mut tmp)?;
+
+            let mode_count = tmp.count_modes;
+            let encoder_count = tmp.count_encoders;
+            let prop_count = tmp.count_props;
+
+            let mut modes = vec_with_capacity::<ioctl::DrmModeInfo>(mode_count as usize)?;
+            let mut ret_modes = vec_with_capacity::<ModeInfo>(mode_count as usize)?;
+            let mut encoder_ids = vec_with_capacity::<u32>(encoder_count as usize)?;
+            let mut prop_ids = vec_with_capacity::<u32>(prop_count as usize)?;
+            let mut prop_values = vec_with_capacity::<u64>(prop_count as usize)?;
+            let mut ret_props = vec_with_capacity::<ModeProp>(prop_count as usize)?;
+
+            tmp = ioctl::DrmModeGetConnector::zeroed();
+            tmp.connector_id = connector_id;
+            tmp.count_modes = mode_count;
+            tmp.modes_ptr = modes.as_mut_ptr() as u64;
+            tmp.count_encoders = encoder_count;
+            tmp.encoders_ptr = encoder_ids.as_mut_ptr() as u64;
+            tmp.count_props = prop_count;
+            tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
+            tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETCONNECTOR, &mut tmp)?;
+
+            if tmp.count_modes != mode_count
+                || tmp.count_props != prop_count
+                || tmp.count_encoders != encoder_count
+            {
+                // Seems like things have changed since our first call, so we need to start over.
+                continue;
+            }
+
+            // We can now safely set the lengths of the various vectors,
+            // because we confirmed above that the kernel gave us the
+            // lengths we asked for.
+            unsafe {
+                modes.set_len(mode_count as usize);
+                encoder_ids.set_len(encoder_count as usize);
+                prop_ids.set_len(prop_count as usize);
+                prop_values.set_len(prop_count as usize);
+            }
+
+            ret_modes.extend(modes.iter().map(|raw| {
+                let name = raw.name[..].split(|c| *c == 0).next().unwrap();
+                let name: &[u8] = unsafe { core::mem::transmute(name) };
+                ModeInfo {
+                    name: name.to_vec(),
+                    clock: raw.clock,
+                    hdisplay: raw.hdisplay,
+                    hsync_start: raw.hsync_start,
+                    hsync_end: raw.hsync_end,
+                    htotal: raw.htotal,
+                    hskew: raw.hskew,
+                    vdisplay: raw.vdisplay,
+                    vsync_start: raw.vsync_start,
+                    vsync_end: raw.vsync_end,
+                    vtotal: raw.vtotal,
+                    vscan: raw.vscan,
+                    vrefresh: raw.vrefresh,
+                    flags: raw.flags,
+                    typ: raw.typ,
+                }
+            }));
+            ret_props.extend(
+                core::iter::zip(prop_ids.iter().copied(), prop_values.iter().copied())
+                    .map(|(prop_id, value)| ModeProp { prop_id, value }),
+            );
+            return Ok(modeset::ConnectorState {
+                id: tmp.connector_id,
+                current_encoder_id: tmp.encoder_id,
+                connector_type: tmp.connector_type,
+                connector_type_id: tmp.connector_type_id,
+                connection_state: tmp.connection.into(),
+                width_mm: tmp.mm_width,
+                height_mm: tmp.mm_height,
+                subpixel_type: tmp.subpixel.into(),
+                modes: ret_modes,
+                props: ret_props,
+                available_encoder_ids: encoder_ids,
             });
         }
     }
@@ -233,18 +325,6 @@ impl<D> TryFrom<linux_io::File<D>> for Card {
     fn try_from(value: linux_io::File<D>) -> Result<Self, InitError> {
         Card::from_file(value)
     }
-}
-
-#[derive(Debug)]
-pub struct CardResources {
-    pub fb_ids: Vec<u32>,
-    pub crtc_ids: Vec<u32>,
-    pub connector_ids: Vec<u32>,
-    pub encoder_ids: Vec<u32>,
-    pub min_width: u32,
-    pub max_width: u32,
-    pub min_height: u32,
-    pub max_height: u32,
 }
 
 #[derive(Debug)]

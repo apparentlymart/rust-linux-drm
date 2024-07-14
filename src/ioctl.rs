@@ -183,3 +183,48 @@ impl_zeroed!(DrmModeCardRes);
 
 pub const DRM_IOCTL_MODE_GETRESOURCES: IoctlReqWriteRead<DrmCardDevice, DrmModeCardRes, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCardRes>(0xa0)) };
+
+#[repr(C)]
+pub struct DrmModeInfo {
+    pub clock: u32,
+    pub hdisplay: u16,
+    pub hsync_start: u16,
+    pub hsync_end: u16,
+    pub htotal: u16,
+    pub hskew: u16,
+    pub vdisplay: u16,
+    pub vsync_start: u16,
+    pub vsync_end: u16,
+    pub vtotal: u16,
+    pub vscan: u16,
+    pub vrefresh: u32,
+    pub flags: u32,
+    pub typ: u32,
+    pub name: [core::ffi::c_char; 32],
+}
+
+#[repr(C)]
+pub struct DrmModeGetConnector {
+    pub encoders_ptr: u64,
+    pub modes_ptr: u64,
+    pub props_ptr: u64,
+    pub prop_values_ptr: u64,
+    pub count_modes: u32,
+    pub count_props: u32,
+    pub count_encoders: u32,
+    pub encoder_id: u32,
+    pub connector_id: u32,
+    pub connector_type: u32,
+    pub connector_type_id: u32,
+    pub connection: u32,
+    pub mm_width: u32,
+    pub mm_height: u32,
+    pub subpixel: u32,
+    #[doc(hidden)]
+    pub _pad: u32,
+}
+
+impl_zeroed!(DrmModeGetConnector);
+
+pub const DRM_IOCTL_MODE_GETCONNECTOR: IoctlReqWriteRead<DrmCardDevice, DrmModeGetConnector, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeGetConnector>(0xa7)) };

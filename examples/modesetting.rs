@@ -27,6 +27,10 @@ fn main() -> std::io::Result<()> {
 
     let resources = card.resources().map_err(map_err)?;
     println!("resources: {resources:#?}");
+    for id in resources.connector_ids {
+        let conn = card.connector_state(id).map_err(map_err)?;
+        println!("connector: {conn:#?}");
+    }
 
     Ok(())
 }
