@@ -10,7 +10,7 @@ pub mod result;
 
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
-use modeset::{ModeInfo, ModeProp};
+use modeset::{EncoderState, ModeInfo, ModeProp};
 use result::{Error, InitError};
 
 #[repr(transparent)]
@@ -272,6 +272,19 @@ impl Card {
                 available_encoder_ids: encoder_ids,
             });
         }
+    }
+
+    pub fn encoder_state(&self, encoder_id: u32) -> Result<modeset::EncoderState, Error> {
+        let mut tmp = ioctl::DrmModeGetEncoder::zeroed();
+        tmp.encoder_id = encoder_id;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_GETENCODER, &mut tmp)?;
+        Ok(EncoderState {
+            encoder_id: tmp.encoder_id,
+            encoder_type: tmp.encoder_type,
+            current_crtc_id: tmp.crtc_id,
+            possible_crtcs: tmp.possible_crtcs,
+            possible_clones: tmp.possible_clones,
+        })
     }
 
     #[inline]

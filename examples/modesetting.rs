@@ -31,6 +31,10 @@ fn main() -> std::io::Result<()> {
         let conn = card.connector_state(id).map_err(map_err)?;
         println!("connector: {conn:#?}");
     }
+    for id in resources.encoder_ids {
+        let enc = card.encoder_state(id).map_err(map_err)?;
+        println!("encoder: {enc:#?}");
+    }
 
     Ok(())
 }

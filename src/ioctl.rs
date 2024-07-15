@@ -228,3 +228,18 @@ impl_zeroed!(DrmModeGetConnector);
 
 pub const DRM_IOCTL_MODE_GETCONNECTOR: IoctlReqWriteRead<DrmCardDevice, DrmModeGetConnector, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeGetConnector>(0xa7)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeGetEncoder {
+    pub encoder_id: u32,
+    pub encoder_type: u32,
+    pub crtc_id: u32,
+    pub possible_crtcs: u32,
+    pub possible_clones: u32,
+}
+
+impl_zeroed!(DrmModeGetEncoder);
+
+pub const DRM_IOCTL_MODE_GETENCODER: IoctlReqWriteRead<DrmCardDevice, DrmModeGetEncoder, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeGetEncoder>(0xa6)) };

@@ -46,6 +46,15 @@ impl From<u32> for ConnectionState {
 }
 
 #[derive(Debug)]
+pub struct EncoderState {
+    pub encoder_id: u32,
+    pub encoder_type: u32,
+    pub current_crtc_id: u32,
+    pub possible_crtcs: u32,
+    pub possible_clones: u32,
+}
+
+#[derive(Debug)]
 pub struct ModeInfo {
     pub name: Vec<u8>,
     pub clock: u32,
