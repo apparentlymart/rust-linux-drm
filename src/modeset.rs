@@ -1,3 +1,5 @@
+use core::slice;
+
 use alloc::vec::Vec;
 
 #[derive(Debug)]
@@ -110,5 +112,76 @@ impl From<u32> for SubpixelType {
             5 => Self::VerticalBgr,
             _ => Self::Unknown,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct DumbBufferRequest {
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+    pub bpp: u32,
+}
+
+#[derive(Debug)]
+pub struct DumbBuffer {
+    pub(crate) ptr: *mut u8,
+    pub(crate) len: usize,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) bpp: u32,
+    pub(crate) pitch: u32,
+    #[allow(dead_code)]
+    pub(crate) buffer_handle: u32,
+}
+
+impl DumbBuffer {
+    pub fn buffer(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
+    }
+
+    pub fn buffer_mut(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn pitch(&self) -> u32 {
+        self.pitch
+    }
+
+    pub fn bpp(&self) -> u32 {
+        self.bpp
+    }
+
+    pub fn pixel_idx(&self, x: u32, y: u32) -> Option<usize> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        Some((y as usize * self.pitch as usize) + (x as usize * (self.bpp / 8) as usize))
+    }
+
+    pub fn clear_to_zero(&mut self) {
+        unsafe { core::ptr::write_bytes(self.ptr, 0, self.len) }
+    }
+}
+
+impl Drop for DumbBuffer {
+    fn drop(&mut self) {
+        let _ = unsafe { linux_unsafe::munmap(self.ptr as *mut _, self.len) };
+        // FIXME: We also need to free the buffer, but we can't do that safely
+        // here because the fd might not still be live.
+        /*
+        const DRM_IOCTL_MODE_DESTROY_DUMB: linux_unsafe::ulong = 0xb4;
+        let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
+        msg.handle = self.buffer_handle;
+        unsafe { linux_unsafe::ioctl(self.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &mut msg as *mut _) };
+        */
     }
 }

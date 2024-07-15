@@ -268,3 +268,64 @@ pub const DRM_IOCTL_MODE_GETCRTC: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtc, 
 
 pub const DRM_IOCTL_MODE_SETCRTC: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtc, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCrtc>(0xa2)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeCreateDumb {
+    pub height: u32,
+    pub width: u32,
+    pub bpp: u32,
+    pub flags: u32,
+    pub handle: u32,
+    pub pitch: u32,
+    pub size: u64,
+}
+
+impl_zeroed!(DrmModeCreateDumb);
+
+pub const DRM_IOCTL_MODE_CREATE_DUMB: IoctlReqWriteRead<DrmCardDevice, DrmModeCreateDumb, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCreateDumb>(0xb2)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeMapDumb {
+    pub handle: u32,
+    pub pad: u32,
+    pub offset: u64,
+}
+
+impl_zeroed!(DrmModeMapDumb);
+
+pub const DRM_IOCTL_MODE_MAP_DUMB: IoctlReqWriteRead<DrmCardDevice, DrmModeMapDumb, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeMapDumb>(0xb3)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeDestroyDumb {
+    pub handle: u32,
+}
+
+impl_zeroed!(DrmModeDestroyDumb);
+
+pub const DRM_IOCTL_MODE_DESTROY_DUMB: IoctlReqWriteRead<DrmCardDevice, DrmModeDestroyDumb, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeDestroyDumb>(0xb4)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeFbCmd {
+    pub fb_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub bpp: u32,
+    pub depth: u32,
+    pub handle: u32,
+}
+
+impl_zeroed!(DrmModeFbCmd);
+
+pub const DRM_IOCTL_MODE_GETFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbCmd, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeFbCmd>(0xad)) };
+
+pub const DRM_IOCTL_MODE_ADDFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbCmd, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeFbCmd>(0xae)) };

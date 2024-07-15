@@ -8,9 +8,11 @@ pub mod ioctl;
 pub mod modeset;
 pub mod result;
 
+use core::ptr::null_mut;
+
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
-use modeset::{CrtcState, EncoderState, ModeInfo, ModeProp};
+use modeset::{EncoderState, ModeInfo, ModeProp};
 use result::{Error, InitError};
 
 #[repr(transparent)]
@@ -302,6 +304,54 @@ impl Card {
             flags: raw.flags,
             typ: raw.typ,
         }
+    }
+
+    pub fn create_dumb_buffer(
+        &self,
+        req: modeset::DumbBufferRequest,
+    ) -> Result<modeset::DumbBuffer, Error> {
+        let mut buf_req = ioctl::DrmModeCreateDumb::zeroed();
+        buf_req.width = req.width;
+        buf_req.height = req.height;
+        buf_req.bpp = req.bpp;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_CREATE_DUMB, &mut buf_req)?;
+
+        // FIXME: If we fail after this point then we should free the dumb buffer.
+
+        let mut fb_req = ioctl::DrmModeFbCmd::zeroed();
+        fb_req.width = buf_req.width;
+        fb_req.height = buf_req.height;
+        fb_req.bpp = buf_req.bpp;
+        fb_req.depth = req.depth;
+        fb_req.pitch = buf_req.pitch;
+        fb_req.handle = buf_req.handle;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_ADDFB, &mut fb_req)?;
+
+        // FIXME: If we fail after this point then we should free the framebuffer object.
+
+        let mut map_req = ioctl::DrmModeMapDumb::zeroed();
+        map_req.handle = buf_req.handle;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_MAP_DUMB, &mut map_req)?;
+
+        let buf_ptr = unsafe {
+            self.f.mmap_raw(
+                map_req.offset as i64,
+                buf_req.size as usize,
+                null_mut(),
+                0b11, // PROT_READ | PROT_WRITE,
+                0x01, // MAP_SHARED,
+            )?
+        };
+
+        Ok(modeset::DumbBuffer {
+            width: buf_req.width,
+            height: buf_req.height,
+            bpp: buf_req.bpp,
+            pitch: buf_req.pitch,
+            ptr: buf_ptr as *mut u8,
+            len: buf_req.size as usize,
+            buffer_handle: buf_req.handle,
+        })
     }
 
     #[inline]

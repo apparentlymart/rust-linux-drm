@@ -1,4 +1,4 @@
-use linux_drm::{Card, ClientCap, DeviceCap};
+use linux_drm::{modeset::DumbBufferRequest, Card, ClientCap, DeviceCap};
 
 fn main() -> std::io::Result<()> {
     let mut card = Card::open(c"/dev/dri/card0").map_err(map_init_err)?;
@@ -39,6 +39,16 @@ fn main() -> std::io::Result<()> {
         let crtc = card.crtc_state(id).map_err(map_err)?;
         println!("CRTC: {crtc:#?}");
     }
+
+    let buf = card
+        .create_dumb_buffer(DumbBufferRequest {
+            width: 640,
+            height: 480,
+            depth: 24,
+            bpp: 32,
+        })
+        .map_err(map_err)?;
+    println!("buffer {buf:?}");
 
     Ok(())
 }
