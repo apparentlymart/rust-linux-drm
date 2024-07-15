@@ -124,18 +124,19 @@ pub struct DumbBufferRequest {
 }
 
 #[derive(Debug)]
-pub struct DumbBuffer {
+pub struct DumbBuffer<'a> {
     pub(crate) ptr: *mut u8,
     pub(crate) len: usize,
+    pub(crate) card: &'a crate::Card,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) bpp: u32,
     pub(crate) pitch: u32,
-    #[allow(dead_code)]
+    pub(crate) fb_id: u32,
     pub(crate) buffer_handle: u32,
 }
 
-impl DumbBuffer {
+impl<'a> DumbBuffer<'a> {
     pub fn buffer(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
@@ -172,16 +173,21 @@ impl DumbBuffer {
     }
 }
 
-impl Drop for DumbBuffer {
+impl<'a> Drop for DumbBuffer<'a> {
     fn drop(&mut self) {
         let _ = unsafe { linux_unsafe::munmap(self.ptr as *mut _, self.len) };
-        // FIXME: We also need to free the buffer, but we can't do that safely
-        // here because the fd might not still be live.
-        /*
-        const DRM_IOCTL_MODE_DESTROY_DUMB: linux_unsafe::ulong = 0xb4;
-        let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
-        msg.handle = self.buffer_handle;
-        unsafe { linux_unsafe::ioctl(self.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &mut msg as *mut _) };
-        */
+        {
+            let mut fb_id = self.fb_id;
+            let _ = self
+                .card
+                .ioctl(crate::ioctl::DRM_IOCTL_MODE_RMFB, &mut fb_id);
+        }
+        {
+            let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
+            msg.handle = self.buffer_handle;
+            let _ = self
+                .card
+                .ioctl(crate::ioctl::DRM_IOCTL_MODE_DESTROY_DUMB, &mut msg);
+        }
     }
 }

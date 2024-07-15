@@ -329,3 +329,6 @@ pub const DRM_IOCTL_MODE_GETFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbCmd, i
 
 pub const DRM_IOCTL_MODE_ADDFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbCmd, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeFbCmd>(0xae)) };
+
+pub const DRM_IOCTL_MODE_RMFB: IoctlReqWriteRead<DrmCardDevice, linux_unsafe::uint, int> =
+    unsafe { ioctl_writeread(_IOWR::<linux_unsafe::uint>(0xaf)) };

@@ -16,6 +16,7 @@ use modeset::{EncoderState, ModeInfo, ModeProp};
 use result::{Error, InitError};
 
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct Card {
     f: linux_io::File<ioctl::DrmCardDevice>,
 }
@@ -306,10 +307,10 @@ impl Card {
         }
     }
 
-    pub fn create_dumb_buffer(
-        &self,
+    pub fn create_dumb_buffer<'buf, 'card: 'buf>(
+        &'card self,
         req: modeset::DumbBufferRequest,
-    ) -> Result<modeset::DumbBuffer, Error> {
+    ) -> Result<modeset::DumbBuffer<'buf>, Error> {
         let mut buf_req = ioctl::DrmModeCreateDumb::zeroed();
         buf_req.width = req.width;
         buf_req.height = req.height;
@@ -350,7 +351,9 @@ impl Card {
             pitch: buf_req.pitch,
             ptr: buf_ptr as *mut u8,
             len: buf_req.size as usize,
+            fb_id: fb_req.fb_id,
             buffer_handle: buf_req.handle,
+            card: &self,
         })
     }
 
