@@ -12,9 +12,9 @@ dependencies = [
 
 [[package]]
 name = "linux-io"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b5a435bc58fccdaa227c0744f5f7ce49f2d60fc94629de98c386c08f6cdd80e"
+checksum = "ec91345282be458d5ae1e61804aecae968a9e148e30db6638571362092bf7aa2"
 dependencies = [
  "linux-unsafe",
 ]
