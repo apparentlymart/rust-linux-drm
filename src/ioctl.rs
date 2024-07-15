@@ -164,6 +164,7 @@ pub const DRM_CLIENT_CAP_ASPECT_RATIO: DrmClientCap = DrmClientCap(4);
 pub const DRM_CLIENT_CAP_WRITEBACK_CONNECTORS: DrmClientCap = DrmClientCap(5);
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeCardRes {
     pub fb_id_ptr: u64,
     pub crtc_id_ptr: u64,
@@ -185,6 +186,7 @@ pub const DRM_IOCTL_MODE_GETRESOURCES: IoctlReqWriteRead<DrmCardDevice, DrmModeC
     unsafe { ioctl_writeread(_IOWR::<DrmModeCardRes>(0xa0)) };
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeInfo {
     pub clock: u32,
     pub hdisplay: u16,
@@ -204,6 +206,7 @@ pub struct DrmModeInfo {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeGetConnector {
     pub encoders_ptr: u64,
     pub modes_ptr: u64,
@@ -243,3 +246,25 @@ impl_zeroed!(DrmModeGetEncoder);
 
 pub const DRM_IOCTL_MODE_GETENCODER: IoctlReqWriteRead<DrmCardDevice, DrmModeGetEncoder, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeGetEncoder>(0xa6)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeCrtc {
+    pub set_connectors_ptr: u64,
+    pub count_connectors: u32,
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub x: u32,
+    pub y: u32,
+    pub gamma_size: u32,
+    pub mode_valid: u32,
+    pub mode: DrmModeInfo,
+}
+
+impl_zeroed!(DrmModeCrtc);
+
+pub const DRM_IOCTL_MODE_GETCRTC: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtc, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCrtc>(0xa1)) };
+
+pub const DRM_IOCTL_MODE_SETCRTC: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtc, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCrtc>(0xa2)) };

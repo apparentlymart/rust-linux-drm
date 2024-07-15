@@ -55,6 +55,17 @@ pub struct EncoderState {
 }
 
 #[derive(Debug)]
+pub struct CrtcState {
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub x: u32,
+    pub y: u32,
+    pub gamma_size: u32,
+    pub mode_valid: u32,
+    pub mode: ModeInfo,
+}
+
+#[derive(Debug)]
 pub struct ModeInfo {
     pub name: Vec<u8>,
     pub clock: u32,

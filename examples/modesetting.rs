@@ -35,6 +35,10 @@ fn main() -> std::io::Result<()> {
         let enc = card.encoder_state(id).map_err(map_err)?;
         println!("encoder: {enc:#?}");
     }
+    for id in resources.crtc_ids {
+        let crtc = card.crtc_state(id).map_err(map_err)?;
+        println!("CRTC: {crtc:#?}");
+    }
 
     Ok(())
 }
