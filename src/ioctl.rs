@@ -205,6 +205,10 @@ pub struct DrmModeInfo {
     pub name: [core::ffi::c_char; 32],
 }
 
+pub const DRM_MODE_TYPE_PREFERRED: u32 = 1 << 3;
+pub const DRM_MODE_TYPE_USERDEF: u32 = 1 << 5;
+pub const DRM_MODE_TYPE_DRIVER: u32 = 1 << 6;
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeGetConnector {

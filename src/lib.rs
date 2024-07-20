@@ -237,7 +237,10 @@ impl Card {
                 prop_values.set_len(prop_count as usize);
             }
 
-            ret_modes.extend(modes.iter().map(|raw| Self::prepare_mode_info(raw)));
+            ret_modes.extend(modes.into_iter().map(|raw| {
+                let r: modeset::ModeInfo = raw.into();
+                r
+            }));
             ret_props.extend(
                 core::iter::zip(prop_ids.iter().copied(), prop_values.iter().copied())
                     .map(|(prop_id, value)| ModeProp { prop_id, value }),
@@ -245,7 +248,7 @@ impl Card {
             return Ok(modeset::ConnectorState {
                 id: tmp.connector_id,
                 current_encoder_id: tmp.encoder_id,
-                connector_type: tmp.connector_type,
+                connector_type: tmp.connector_type.into(),
                 connector_type_id: tmp.connector_type_id,
                 connection_state: tmp.connection.into(),
                 width_mm: tmp.mm_width,
@@ -275,37 +278,36 @@ impl Card {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
         tmp.crtc_id = crtc_id;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETCRTC, &mut tmp)?;
-        Ok(modeset::CrtcState {
-            crtc_id,
-            fb_id: tmp.fb_id,
-            x: tmp.x,
-            y: tmp.y,
-            gamma_size: tmp.gamma_size,
-            mode_valid: tmp.mode_valid,
-            mode: Self::prepare_mode_info(&tmp.mode),
-        })
+        Ok(tmp.into())
     }
 
-    fn prepare_mode_info(raw: &ioctl::DrmModeInfo) -> modeset::ModeInfo {
-        let name = raw.name[..].split(|c| *c == 0).next().unwrap();
-        let name: &[u8] = unsafe { core::mem::transmute(name) };
-        ModeInfo {
-            name: name.to_vec(),
-            clock: raw.clock,
-            hdisplay: raw.hdisplay,
-            hsync_start: raw.hsync_start,
-            hsync_end: raw.hsync_end,
-            htotal: raw.htotal,
-            hskew: raw.hskew,
-            vdisplay: raw.vdisplay,
-            vsync_start: raw.vsync_start,
-            vsync_end: raw.vsync_end,
-            vtotal: raw.vtotal,
-            vscan: raw.vscan,
-            vrefresh: raw.vrefresh,
-            flags: raw.flags,
-            typ: raw.typ,
+    pub fn reset_crtc(&mut self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
+        let mut tmp = ioctl::DrmModeCrtc::zeroed();
+        tmp.crtc_id = crtc_id;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_SETCRTC, &mut tmp)?;
+        Ok(tmp.into())
+    }
+
+    pub fn set_crtc_dumb_buffer(
+        &mut self,
+        crtc_id: u32,
+        buf: &modeset::DumbBuffer,
+        mode: &ModeInfo,
+        conn_ids: &[u32],
+    ) -> Result<modeset::CrtcState, Error> {
+        let mut tmp = ioctl::DrmModeCrtc::zeroed();
+        tmp.crtc_id = crtc_id;
+        if conn_ids.len() > (u32::MAX as usize) {
+            return Err(Error::Invalid);
         }
+        tmp.count_connectors = conn_ids.len() as u32;
+        tmp.set_connectors_ptr = conn_ids.as_ptr() as u64;
+        tmp.fb_id = buf.fb_id;
+        tmp.mode = mode.into();
+        tmp.mode_valid = 1;
+
+        self.ioctl(ioctl::DRM_IOCTL_MODE_SETCRTC, &mut tmp)?;
+        Ok(tmp.into())
     }
 
     pub fn create_dumb_buffer(

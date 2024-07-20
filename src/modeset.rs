@@ -19,7 +19,7 @@ pub struct CardResources {
 pub struct ConnectorState {
     pub id: u32,
     pub current_encoder_id: u32,
-    pub connector_type: u32,
+    pub connector_type: ConnectorType,
     pub connector_type_id: u32,
     pub connection_state: ConnectionState,
     pub width_mm: u32,
@@ -30,7 +30,18 @@ pub struct ConnectorState {
     pub available_encoder_ids: Vec<u32>,
 }
 
-#[derive(Debug)]
+impl ConnectorState {
+    pub fn preferred_mode(&self) -> Option<&ModeInfo> {
+        for mode in &self.modes {
+            if (mode.typ & crate::ioctl::DRM_MODE_TYPE_PREFERRED) != 0 {
+                return Some(mode);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u32)]
 pub enum ConnectionState {
     Connected = 1,
@@ -44,6 +55,46 @@ impl From<u32> for ConnectionState {
             1 => Self::Connected,
             2 => Self::Disconnected,
             _ => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u32)]
+pub enum ConnectorType {
+    Unknown = 0,
+    Vga = 1,
+    DviI = 2,
+    DviD = 3,
+    DviA = 4,
+    Composite = 5,
+    SVideo = 6,
+    Lvds = 7,
+    Component = 8,
+    NinePinDin = 9,
+    DisplayPort = 10,
+    HdmiA = 11,
+    HdmiB = 12,
+    Tv = 13,
+    Edp = 14,
+    Virtual = 15,
+    Dsi = 16,
+    Dpi = 17,
+    Writeback = 18,
+    Spi = 19,
+    Usb = 20,
+    Other = !0, // Not used by kernel, but used by us if kernel returns something we don't know
+}
+
+impl From<u32> for ConnectorType {
+    #[inline]
+    fn from(value: u32) -> Self {
+        if value < 21 {
+            // Safety: all values in this range are valid representations
+            // of this enum, as described above.
+            unsafe { core::mem::transmute(value) }
+        } else {
+            Self::Other
         }
     }
 }
@@ -68,6 +119,20 @@ pub struct CrtcState {
     pub mode: ModeInfo,
 }
 
+impl From<crate::ioctl::DrmModeCrtc> for CrtcState {
+    fn from(value: crate::ioctl::DrmModeCrtc) -> Self {
+        Self {
+            crtc_id: value.crtc_id,
+            fb_id: value.fb_id,
+            x: value.x,
+            y: value.y,
+            gamma_size: value.gamma_size,
+            mode_valid: value.mode_valid,
+            mode: value.mode.into(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ModeInfo {
     pub name: Vec<u8>,
@@ -85,6 +150,57 @@ pub struct ModeInfo {
     pub vrefresh: u32,
     pub flags: u32,
     pub typ: u32,
+}
+
+impl From<crate::ioctl::DrmModeInfo> for ModeInfo {
+    fn from(value: crate::ioctl::DrmModeInfo) -> Self {
+        let name = value.name[..].split(|c| *c == 0).next().unwrap();
+        let name: &[u8] = unsafe { core::mem::transmute(name) };
+        Self {
+            name: name.to_vec(),
+            clock: value.clock,
+            hdisplay: value.hdisplay,
+            hsync_start: value.hsync_start,
+            hsync_end: value.hsync_end,
+            htotal: value.htotal,
+            hskew: value.hskew,
+            vdisplay: value.vdisplay,
+            vsync_start: value.vsync_start,
+            vsync_end: value.vsync_end,
+            vtotal: value.vtotal,
+            vscan: value.vscan,
+            vrefresh: value.vrefresh,
+            flags: value.flags,
+            typ: value.typ,
+        }
+    }
+}
+
+impl From<&ModeInfo> for crate::ioctl::DrmModeInfo {
+    fn from(value: &ModeInfo) -> Self {
+        let mut name_raw = [0_8; 32];
+        let name_len = core::cmp::min(name_raw.len() - 1, value.name.len());
+        let name_raw_slice = &mut name_raw[0..name_len];
+        name_raw_slice
+            .copy_from_slice(unsafe { core::mem::transmute(&value.name.as_slice()[0..name_len]) });
+        Self {
+            clock: value.clock,
+            hdisplay: value.hdisplay,
+            hsync_start: value.hsync_start,
+            hsync_end: value.hsync_end,
+            htotal: value.htotal,
+            hskew: value.hskew,
+            vdisplay: value.vdisplay,
+            vsync_start: value.vsync_start,
+            vsync_end: value.vsync_end,
+            vtotal: value.vtotal,
+            vscan: value.vscan,
+            vrefresh: value.vrefresh,
+            flags: value.flags,
+            typ: value.typ,
+            name: name_raw,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -160,6 +276,10 @@ impl DumbBuffer {
 
     pub fn bpp(&self) -> u32 {
         self.bpp
+    }
+
+    pub fn framebuffer_id(&self) -> u32 {
+        self.fb_id
     }
 
     pub fn pixel_idx(&self, x: u32, y: u32) -> Option<usize> {
