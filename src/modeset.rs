@@ -1,5 +1,6 @@
 use core::slice;
 
+use alloc::sync::Weak;
 use alloc::vec::Vec;
 
 #[derive(Debug)]
@@ -124,10 +125,10 @@ pub struct DumbBufferRequest {
 }
 
 #[derive(Debug)]
-pub struct DumbBuffer<'a> {
+pub struct DumbBuffer {
     pub(crate) ptr: *mut u8,
     pub(crate) len: usize,
-    pub(crate) card: &'a crate::Card,
+    pub(crate) file: Weak<linux_io::File<crate::ioctl::DrmCardDevice>>,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) bpp: u32,
@@ -136,7 +137,7 @@ pub struct DumbBuffer<'a> {
     pub(crate) buffer_handle: u32,
 }
 
-impl<'a> DumbBuffer<'a> {
+impl DumbBuffer {
     pub fn buffer(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
@@ -173,21 +174,28 @@ impl<'a> DumbBuffer<'a> {
     }
 }
 
-impl<'a> Drop for DumbBuffer<'a> {
+impl Drop for DumbBuffer {
     fn drop(&mut self) {
         let _ = unsafe { linux_unsafe::munmap(self.ptr as *mut _, self.len) };
+
+        // If the associated file is still open then we'll also free the framebuffer and
+        // dumb buffer. Otherwise we'll just hope that the file descriptor associated with
+        // self.file got properly closed so that the kernel could free these automatically.
+        let Some(f) = self.file.upgrade() else {
+            return;
+        };
         {
             let mut fb_id = self.fb_id;
-            let _ = self
-                .card
-                .ioctl(crate::ioctl::DRM_IOCTL_MODE_RMFB, &mut fb_id);
+            let _ = crate::drm_ioctl(f.as_ref(), crate::ioctl::DRM_IOCTL_MODE_RMFB, &mut fb_id);
         }
         {
             let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
             msg.handle = self.buffer_handle;
-            let _ = self
-                .card
-                .ioctl(crate::ioctl::DRM_IOCTL_MODE_DESTROY_DUMB, &mut msg);
+            let _ = crate::drm_ioctl(
+                f.as_ref(),
+                crate::ioctl::DRM_IOCTL_MODE_DESTROY_DUMB,
+                &mut msg,
+            );
         }
     }
 }

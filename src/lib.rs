@@ -10,6 +10,7 @@ pub mod result;
 
 use core::ptr::null_mut;
 
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
 use modeset::{EncoderState, ModeInfo, ModeProp};
@@ -18,7 +19,7 @@ use result::{Error, InitError};
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Card {
-    f: linux_io::File<ioctl::DrmCardDevice>,
+    f: Arc<linux_io::File<ioctl::DrmCardDevice>>,
 }
 
 impl Card {
@@ -36,7 +37,7 @@ impl Card {
         // probe is successful, which therefore suggests that
         // this ought to be a DRM card device.
         let f: linux_io::File<ioctl::DrmCardDevice> = unsafe { f.to_device(ioctl::DrmCardDevice) };
-        let ret = Self { f };
+        let ret = Self { f: Arc::new(f) };
         let mut v = ioctl::DrmVersion::zeroed();
         ret.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
         Ok(ret)
@@ -44,7 +45,7 @@ impl Card {
 
     pub unsafe fn from_file_unchecked<D>(f: linux_io::File<D>) -> Self {
         let f: linux_io::File<ioctl::DrmCardDevice> = unsafe { f.to_device(ioctl::DrmCardDevice) };
-        Self { f }
+        Self { f: Arc::new(f) }
     }
 
     pub fn api_version(&self) -> Result<ApiVersion, Error> {
@@ -307,10 +308,10 @@ impl Card {
         }
     }
 
-    pub fn create_dumb_buffer<'buf, 'card: 'buf>(
-        &'card self,
+    pub fn create_dumb_buffer(
+        &self,
         req: modeset::DumbBufferRequest,
-    ) -> Result<modeset::DumbBuffer<'buf>, Error> {
+    ) -> Result<modeset::DumbBuffer, Error> {
         let mut buf_req = ioctl::DrmModeCreateDumb::zeroed();
         buf_req.width = req.width;
         buf_req.height = req.height;
@@ -344,6 +345,8 @@ impl Card {
             )?
         };
 
+        // The DumbBuffer object's Drop is responsible for freeing
+        // the mmap, framebuffer object, and dumb buffer.
         Ok(modeset::DumbBuffer {
             width: buf_req.width,
             height: buf_req.height,
@@ -353,50 +356,53 @@ impl Card {
             len: buf_req.size as usize,
             fb_id: fb_req.fb_id,
             buffer_handle: buf_req.handle,
-            card: &self,
+            file: Arc::downgrade(&self.f),
         })
     }
 
     #[inline]
     pub fn close(self) -> linux_io::result::Result<()> {
-        let f = self.take_file();
+        let f = self.take_file()?;
         f.close()
     }
 
-    #[inline(always)]
-    pub fn take_file(self) -> linux_io::File<ioctl::DrmCardDevice> {
-        self.f
+    pub fn take_file(self) -> linux_io::result::Result<linux_io::File<ioctl::DrmCardDevice>> {
+        Arc::into_inner(self.f).ok_or(linux_io::result::EBUSY)
     }
 
     #[inline(always)]
     pub fn borrow_file(&self) -> &linux_io::File<ioctl::DrmCardDevice> {
-        &self.f
+        self.f.as_ref()
     }
 
     #[inline(always)]
-    pub fn borrow_file_mut(&mut self) -> &mut linux_io::File<ioctl::DrmCardDevice> {
-        &mut self.f
-    }
-
     fn ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
         &'a self,
         request: Req,
         arg: Req::ExtArg,
     ) -> linux_io::result::Result<Req::Result> {
-        // All DRM ioctls can potentially be interrupted if our process
-        // receives a signal while we're waiting, so we'll keep retrying
-        // until we get a non-interrupted result.
-        //
-        // This requires some unsafe trickery because the borrow checker
-        // doesn't understand that only the final non-interrupted call
-        // will actually make use of "arg".
-        let arg_ptr = &arg as *const _;
-        loop {
-            let arg = unsafe { core::ptr::read(arg_ptr) };
-            let ret = self.f.ioctl(request, arg);
-            if !matches!(ret, Err(linux_io::result::EINTR)) {
-                return ret;
-            }
+        drm_ioctl(&self.f, request, arg)
+    }
+}
+
+pub(crate) fn drm_ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
+    f: &'a linux_io::File<ioctl::DrmCardDevice>,
+    request: Req,
+    arg: Req::ExtArg,
+) -> linux_io::result::Result<Req::Result> {
+    // All DRM ioctls can potentially be interrupted if our process
+    // receives a signal while we're waiting, so we'll keep retrying
+    // until we get a non-interrupted result.
+    //
+    // This requires some unsafe trickery because the borrow checker
+    // doesn't understand that only the final non-interrupted call
+    // will actually make use of "arg".
+    let arg_ptr = &arg as *const _;
+    loop {
+        let arg = unsafe { core::ptr::read(arg_ptr) };
+        let ret = f.ioctl(request, arg);
+        if !matches!(ret, Err(linux_io::result::EINTR)) {
+            return ret;
         }
     }
 }
