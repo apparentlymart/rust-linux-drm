@@ -336,3 +336,115 @@ pub const DRM_IOCTL_MODE_ADDFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbCmd, i
 
 pub const DRM_IOCTL_MODE_RMFB: IoctlReqWriteRead<DrmCardDevice, linux_unsafe::uint, int> =
     unsafe { ioctl_writeread(_IOWR::<linux_unsafe::uint>(0xaf)) };
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeFbDirtyCmd {
+    pub fb_id: u32,
+    pub flags: u32,
+    pub color: u32,
+    pub num_clips: u32,
+    pub clips_ptr: u64,
+}
+
+impl_zeroed!(DrmModeFbDirtyCmd);
+
+///
+/// Mark a region of a framebuffer as dirty.
+///
+/// Some hardware does not automatically update display contents
+/// as a hardware or software draw to a framebuffer. This ioctl
+/// allows userspace to tell the kernel and the hardware what
+/// regions of the framebuffer have changed.
+///
+/// The kernel or hardware is free to update more then just the
+/// region specified by the clip rects. The kernel or hardware
+/// may also delay and/or coalesce several calls to dirty into a
+/// single update.
+///
+/// Userspace may annotate the updates, the annotates are a
+/// promise made by the caller that the change is either a copy
+/// of pixels or a fill of a single color in the region specified.
+///
+/// If the [`DRM_MODE_FB_DIRTY_ANNOTATE_COPY`] flag is given then
+/// the number of updated regions are half of num_clips given,
+/// where the clip rects are paired in src and dst. The width and
+/// height of each one of the pairs must match.
+///
+/// If the [`DRM_MODE_FB_DIRTY_ANNOTATE_FILL`] flag is given the caller
+/// promises that the region specified of the clip rects is filled
+/// completely with a single color as given in the color argument.
+///
+pub const DRM_IOCTL_MODE_DIRTYFB: IoctlReqWriteRead<DrmCardDevice, DrmModeFbDirtyCmd, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeFbDirtyCmd>(0xb1)) };
+
+pub const DRM_MODE_FB_DIRTY_ANNOTATE_COPY: u32 = 0x01;
+pub const DRM_MODE_FB_DIRTY_ANNOTATE_FILL: u32 = 0x02;
+pub const DRM_MODE_FB_DIRTY_FLAGS: u32 = 0x03;
+pub const DRM_MODE_FB_DIRTY_MAX_CLIPS: u32 = 256;
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeCrtcPageFlip {
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub flags: u32,
+    /// Must always be set to zero.
+    pub reserved: u32,
+    pub user_data: u64,
+}
+
+impl_zeroed!(DrmModeCrtcPageFlip);
+
+/// Request a page flip on the specified crtc.
+///
+/// This ioctl will ask KMS to schedule a page flip for the specified
+/// crtc.  Once any pending rendering targeting the specified fb (as of
+/// ioctl time) has completed, the crtc will be reprogrammed to display
+/// that fb after the next vertical refresh.  The ioctl returns
+/// immediately, but subsequent rendering to the current fb will block
+/// in the execbuffer ioctl until the page flip happens.  If a page
+/// flip is already pending as the ioctl is called, EBUSY will be
+/// returned.
+///
+/// Flag [`DRM_MODE_PAGE_FLIP_EVENT`] requests that drm sends back a vblank
+/// event (see drm.h: struct drm_event_vblank) when the page flip is
+/// done.  The user_data field passed in with this ioctl will be
+/// returned as the user_data field in the vblank event struct.
+///
+/// Flag [`DRM_MODE_PAGE_FLIP_ASYNC`] requests that the flip happen
+/// 'as soon as possible', meaning that it not delay waiting for vblank.
+/// This may cause tearing on the screen.
+///
+/// The reserved field must be zero.
+pub const DRM_IOCTL_MODE_PAGE_FLIP: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtcPageFlip, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCrtcPageFlip>(0xb0)) };
+
+/// Request that the kernel sends back a vblank event (see
+/// struct drm_event_vblank) with the [`crate::event::raw::DRM_EVENT_FLIP_COMPLETE`]
+/// type when the page-flip is done.
+pub const DRM_MODE_PAGE_FLIP_EVENT: u32 = 0x01;
+/// Request that the page-flip is performed as soon as possible, ie. with no
+/// delay due to waiting for vblank. This may cause tearing to be visible on
+/// the screen.
+///
+/// When used with atomic uAPI, the driver will return an error if the hardware
+/// doesn't support performing an asynchronous page-flip for this update.
+/// User-space should handle this, e.g. by falling back to a regular page-flip.
+///
+/// Note, some hardware might need to perform one last synchronous page-flip
+/// before being able to switch to asynchronous page-flips. As an exception,
+/// the driver will return success even though that first page-flip is not
+/// asynchronous.
+pub const DRM_MODE_PAGE_FLIP_ASYNC: u32 = 0x02;
+pub const DRM_MODE_PAGE_FLIP_TARGET_ABSOLUTE: u32 = 0x4;
+pub const DRM_MODE_PAGE_FLIP_TARGET_RELATIVE: u32 = 0x8;
+pub const DRM_MODE_PAGE_FLIP_TARGET: u32 =
+    DRM_MODE_PAGE_FLIP_TARGET_ABSOLUTE | DRM_MODE_PAGE_FLIP_TARGET_RELATIVE;
+/// Bitmask of flags suitable for [`DrmModeCrtcPageFlip::flags`].
+pub const DRM_MODE_PAGE_FLIP_FLAGS: u32 =
+    DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_PAGE_FLIP_ASYNC | DRM_MODE_PAGE_FLIP_TARGET;
+
+pub const DRM_MODE_CURSOR_BO: u32 = 0x01;
+pub const DRM_MODE_CURSOR_MOVE: u32 = 0x02;
+pub const DRM_MODE_CURSOR_FLAGS: u32 = 0x03;

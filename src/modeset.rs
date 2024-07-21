@@ -1,3 +1,4 @@
+use core::ops::{BitAnd, BitOr};
 use core::slice;
 
 use alloc::sync::Weak;
@@ -229,6 +230,41 @@ impl From<u32> for SubpixelType {
             5 => Self::VerticalBgr,
             _ => Self::Unknown,
         }
+    }
+}
+
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct PageFlipFlags(u32);
+
+impl PageFlipFlags {
+    pub const NONE: Self = Self(0);
+    pub const EVENT: Self = Self(crate::ioctl::DRM_MODE_PAGE_FLIP_EVENT);
+    pub const ASYNC: Self = Self(crate::ioctl::DRM_MODE_PAGE_FLIP_ASYNC);
+}
+
+impl BitOr for PageFlipFlags {
+    type Output = Self;
+
+    #[inline(always)]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitAnd for PageFlipFlags {
+    type Output = Self;
+
+    #[inline(always)]
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl From<PageFlipFlags> for u32 {
+    #[inline(always)]
+    fn from(value: PageFlipFlags) -> Self {
+        value.0
     }
 }
 

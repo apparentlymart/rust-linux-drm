@@ -1,8 +1,10 @@
 use std::{thread::sleep, time::Duration};
 
 use linux_drm::{
+    event::{DrmEvent, GenericDrmEvent},
     modeset::{
         CardResources, ConnectionState, ConnectorState, DumbBuffer, DumbBufferRequest, ModeInfo,
+        PageFlipFlags,
     },
     result::Error,
     Card, ClientCap, DeviceCap,
@@ -66,11 +68,25 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
             conn.id
         );
         card.set_crtc_dumb_buffer(output.crtc_id, &output.db, mode, &[output.conn_id])?;
+        card.crtc_page_flip_dumb_buffer(output.crtc_id, &output.db, PageFlipFlags::EVENT)?;
     }
 
-    sleep(Duration::from_secs(5));
-
-    Ok(())
+    let mut evt_buf = vec![0_u8; 1024];
+    loop {
+        println!("waiting for events (send SIGINT to exit)");
+        for evt in card.read_events(&mut evt_buf)? {
+            println!("event {evt:?}");
+            match evt {
+                DrmEvent::Generic(GenericDrmEvent::FlipComplete(_)) => {
+                    // In a real program this would be a time place to draw the next frame
+                    // for the reported crtc.
+                }
+                _ => {
+                    // Ignore any unrecognized event types.
+                }
+            }
+        }
+    }
 }
 
 fn prepare_outputs(card: &Card) -> Result<Vec<Output>, Error> {

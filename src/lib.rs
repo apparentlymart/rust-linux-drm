@@ -1,7 +1,10 @@
 #![no_std]
+#![feature(ptr_metadata)]
 
 extern crate alloc;
 
+/// Types and other symbols used for event handling.
+pub mod event;
 /// Low-level `ioctl`-based access to DRM devices.
 pub mod ioctl;
 /// Types and other symbols used for modesetting.
@@ -310,6 +313,20 @@ impl Card {
         Ok(tmp.into())
     }
 
+    pub fn crtc_page_flip_dumb_buffer(
+        &mut self,
+        crtd_id: u32,
+        buf: &modeset::DumbBuffer,
+        flags: modeset::PageFlipFlags,
+    ) -> Result<(), Error> {
+        let mut tmp = ioctl::DrmModeCrtcPageFlip::zeroed();
+        tmp.crtc_id = crtd_id;
+        tmp.fb_id = buf.fb_id;
+        tmp.flags = flags.into();
+        self.ioctl(ioctl::DRM_IOCTL_MODE_PAGE_FLIP, &mut tmp)?;
+        Ok(())
+    }
+
     pub fn create_dumb_buffer(
         &self,
         req: modeset::DumbBufferRequest,
@@ -360,6 +377,55 @@ impl Card {
             buffer_handle: buf_req.handle,
             file: Arc::downgrade(&self.f),
         })
+    }
+
+    /// Read raw events from the card's file descriptor.
+    ///
+    /// DRM deals with events by having clients read from the card file descriptor,
+    /// at which point the driver writes as many whole pending events as will fit
+    /// into the given buffer. To give callers control over the buffer size, this
+    /// function takes a preallocated mutable buffer to use for the temporary
+    /// storage and then interprets the data one event at a time as the resulting
+    /// iterator is used. The buffer should be at least large enough to contain
+    /// one instance of the largest event type the kernel might return.
+    ///
+    /// If this function returns successfully then the caller *must* read the
+    /// resulting iterator until it produces `None`, or otherwise any unread events
+    /// will be lost.
+    ///
+    /// All objects returned from the iterator are views into portions of the
+    /// provided buffer.
+    pub fn read_events_raw<'a>(
+        &self,
+        buf: &'a mut [u8],
+    ) -> Result<impl Iterator<Item = &'a event::raw::DrmEvent> + 'a, Error> {
+        let len = self.f.read(buf)?;
+        let buf = &buf[0..len];
+        Ok(event::raw::events_from_bytes(buf))
+    }
+
+    /// Read events from the card's file descriptor.
+    ///
+    /// If this function returns successfully then the caller *must* read the
+    /// resulting iterator until it produces `None`, or otherwise any unread
+    /// events will be lost.
+    ///
+    /// This uses `buf` in the same way as [`Self::read_events_raw`], but
+    /// instead of returning direct references to parts of the buffer it
+    /// copies the event data into owned objects that can therefore outlive
+    /// the buffer. This is really just a convenience wrapper around
+    /// passing the [`Self::read_events_raw`] results through
+    /// [`event::DrmEvent::from_raw`].
+    ///
+    /// Unlike [`Self::read_events_raw`], this function's iterator will
+    /// sometimes perform dynamic allocations to capture the bodies of
+    /// events with unrecognized types.
+    pub fn read_events<'a>(
+        &self,
+        buf: &'a mut [u8],
+    ) -> Result<impl Iterator<Item = event::DrmEvent> + 'a, Error> {
+        let raws = self.read_events_raw(buf)?;
+        Ok(raws.map(|raw| event::DrmEvent::from_raw(raw)))
     }
 
     #[inline]
