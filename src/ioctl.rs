@@ -32,6 +32,43 @@ const fn _IOWR<T>(nr: ulong) -> ulong {
     linux_io::fd::ioctl::_IOWR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as u64)
 }
 
+/// Fixed-point unsigned 16.16-bit number type, represented as [`u32`].
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct fixedu16_16(u32);
+
+impl fixedu16_16 {
+    #[inline(always)]
+    pub fn from_u16(v: u16) -> Self {
+        Self((v as u32) << 16)
+    }
+
+    #[inline(always)]
+    pub fn from_u16_frac(w: u16, f: u16) -> Self {
+        Self(((w as u32) << 16) | (f as u32))
+    }
+
+    #[inline(always)]
+    pub fn as_raw_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl From<u16> for fixedu16_16 {
+    #[inline(always)]
+    fn from(value: u16) -> Self {
+        Self::from_u16(value)
+    }
+}
+
+impl From<u8> for fixedu16_16 {
+    #[inline(always)]
+    fn from(value: u8) -> Self {
+        Self::from_u16(value as u16)
+    }
+}
+
 macro_rules! impl_zeroed {
     ($t:ty) => {
         impl $t {
@@ -499,3 +536,120 @@ pub const DRM_MODE_ATOMIC_FLAGS: u32 = DRM_MODE_PAGE_FLIP_EVENT
     | DRM_MODE_ATOMIC_TEST_ONLY
     | DRM_MODE_ATOMIC_NONBLOCK
     | DRM_MODE_ATOMIC_ALLOW_MODESET;
+
+pub struct DrmModeObjGetProperties {
+    pub props_ptr: u64,
+    pub prop_values_ptr: u64,
+    pub count_props: u32,
+    pub obj_id: u32,
+    pub obj_type: u32,
+}
+
+impl_zeroed!(DrmModeObjGetProperties);
+
+pub const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: IoctlReqWriteRead<
+    DrmCardDevice,
+    DrmModeObjGetProperties,
+    int,
+> = unsafe { ioctl_writeread(_IOWR::<DrmModeObjGetProperties>(0xb9)) };
+
+pub struct DrmModeObjSetProperty {
+    pub value: u64,
+    pub prop_id: u32,
+    pub obj_id: u32,
+    pub obj_type: u32,
+}
+
+impl_zeroed!(DrmModeObjSetProperty);
+
+pub const DRM_IOCTL_MODE_OBJ_SETPROPERTY: IoctlReqWriteRead<
+    DrmCardDevice,
+    DrmModeObjSetProperty,
+    int,
+> = unsafe { ioctl_writeread(_IOWR::<DrmModeObjSetProperty>(0xba)) };
+
+pub const DRM_MODE_OBJECT_CRTC: u32 = 0xcccccccc;
+pub const DRM_MODE_OBJECT_CONNECTOR: u32 = 0xc0c0c0c0;
+pub const DRM_MODE_OBJECT_ENCODER: u32 = 0xe0e0e0e0;
+pub const DRM_MODE_OBJECT_MODE: u32 = 0xdededede;
+pub const DRM_MODE_OBJECT_PROPERTY: u32 = 0xb0b0b0b0;
+pub const DRM_MODE_OBJECT_FB: u32 = 0xfbfbfbfb;
+pub const DRM_MODE_OBJECT_BLOB: u32 = 0xbbbbbbbb;
+pub const DRM_MODE_OBJECT_PLANE: u32 = 0xeeeeeeee;
+pub const DRM_MODE_OBJECT_ANY: u32 = 0;
+
+pub struct DrmModeGetPlaneRes {
+    pub plane_id_ptr: u64,
+    pub count_planes: u32,
+}
+
+impl_zeroed!(DrmModeGetPlaneRes);
+
+pub const DRM_IOCTL_MODE_GETPLANERESOURCES: IoctlReqWriteRead<
+    DrmCardDevice,
+    DrmModeGetPlaneRes,
+    int,
+> = unsafe { ioctl_writeread(_IOWR::<DrmModeGetPlaneRes>(0xb5)) };
+
+pub struct DrmModeGetPlane {
+    pub plane_id: u32,
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub possible_crtcs: u32,
+    pub gamma_size: u32,
+    pub count_format_types: u32,
+    pub format_type_ptr: u32,
+}
+
+impl_zeroed!(DrmModeGetPlane);
+
+pub const DRM_IOCTL_MODE_GETPLANE: IoctlReqWriteRead<DrmCardDevice, DrmModeGetPlane, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeGetPlane>(0xb6)) };
+
+pub struct DrmModeSetPlane {
+    pub plane_id: u32,
+    pub crtc_id: u32,
+    pub fb_id: u32, // fb object contains surface format type
+    pub flags: u32, // DRM_MODE_PRESENT_ flags
+
+    pub crtc_x: i32,
+    pub crtc_y: i32,
+    pub crtc_w: u32,
+    pub crtc_h: u32,
+
+    pub src_x: fixedu16_16,
+    pub src_y: fixedu16_16,
+    pub src_h: fixedu16_16,
+    pub src_w: fixedu16_16,
+}
+
+impl_zeroed!(DrmModeSetPlane);
+
+pub const DRM_IOCTL_MODE_SETPLANE: IoctlReqWriteRead<DrmCardDevice, DrmModeSetPlane, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeSetPlane>(0xb7)) };
+
+pub const DRM_MODE_PRESENT_TOP_FIELD: u32 = 1 << 0;
+pub const DRM_MODE_PRESENT_BOTTOM_FIELD: u32 = 1 << 1;
+
+pub struct DrmModeCreateBlob {
+    pub data: u64,
+    pub length: u32,
+    pub blob_id: u32,
+}
+
+impl_zeroed!(DrmModeCreateBlob);
+
+pub const DRM_IOCTL_MODE_CREATEPROPBLOB: IoctlReqWriteRead<DrmCardDevice, DrmModeCreateBlob, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeCreateBlob>(0xbd)) };
+
+pub struct DrmModeDestroyBlob {
+    pub blob_id: u32,
+}
+
+impl_zeroed!(DrmModeDestroyBlob);
+
+pub const DRM_IOCTL_MODE_DESTROYPROPBLOB: IoctlReqWriteRead<
+    DrmCardDevice,
+    DrmModeDestroyBlob,
+    int,
+> = unsafe { ioctl_writeread(_IOWR::<DrmModeDestroyBlob>(0xbe)) };
