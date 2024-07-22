@@ -448,3 +448,54 @@ pub const DRM_MODE_PAGE_FLIP_FLAGS: u32 =
 pub const DRM_MODE_CURSOR_BO: u32 = 0x01;
 pub const DRM_MODE_CURSOR_MOVE: u32 = 0x02;
 pub const DRM_MODE_CURSOR_FLAGS: u32 = 0x03;
+
+pub struct DrmModeAtomic {
+    pub flags: u32,
+    pub count_objs: u32,
+    pub objs_ptr: u64,
+    pub count_props_ptr: u64,
+    pub props_ptr: u64,
+    pub prop_values_ptr: u64,
+    pub reserved: u64,
+    pub user_data: u64,
+}
+
+impl_zeroed!(DrmModeAtomic);
+
+pub const DRM_IOCTL_MODE_ATOMIC: IoctlReqWriteRead<DrmCardDevice, DrmModeAtomic, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeAtomic>(0xbc)) };
+
+/// Do not apply the atomic commit, and instead check whether the hardware supports
+/// this configuration.
+pub const DRM_MODE_ATOMIC_TEST_ONLY: u32 = 0x0100;
+
+/// Do not block while applying the atomic commit. The [`DRM_IOCTL_MODE_ATOMIC`]
+/// request returns immediately instead of waiting for the changes to be applied
+/// in hardware. Note, the driver will still check whether the update can be
+/// applied before retuning.
+pub const DRM_MODE_ATOMIC_NONBLOCK: u32 = 0x0200;
+
+/// Allow the update to result in temporary or transient visible artifacts while
+/// the update is being applied. Applying the update may also take significantly
+/// more time than a page flip. All visual artifacts will disappear by the time
+/// the update is completed, as signalled through the vblank event's timestamp.
+///
+/// This flag must be set when the KMS update might cause visible artifacts.
+/// Without this flag such KMS update will return an `EINVAL` error. What kind of
+/// update may cause visible artifacts depends on the driver and the hardware.
+/// User-space that needs to know beforehand if an update might cause visible
+/// artifacts can use [`DRM_MODE_ATOMIC_TEST_ONLY`] without
+/// [`DRM_MODE_ATOMIC_ALLOW_MODESET`] to see if it fails.
+///
+/// To the best of the driver's knowledge, visual artifacts are guaranteed to
+/// not appear when this flag is not set. Some sinks might display visual
+/// artifacts outside of the driver's control.
+pub const DRM_MODE_ATOMIC_ALLOW_MODESET: u32 = 0x0400;
+
+/// Bitfield of flags accepted by [`DRM_IOCTL_MODE_ATOMIC`] in
+/// [`DrmModeAtomic::flags`].
+pub const DRM_MODE_ATOMIC_FLAGS: u32 = DRM_MODE_PAGE_FLIP_EVENT
+    | DRM_MODE_PAGE_FLIP_ASYNC
+    | DRM_MODE_ATOMIC_TEST_ONLY
+    | DRM_MODE_ATOMIC_NONBLOCK
+    | DRM_MODE_ATOMIC_ALLOW_MODESET;
