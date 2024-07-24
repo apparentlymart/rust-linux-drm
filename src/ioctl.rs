@@ -137,22 +137,73 @@ pub struct DrmCap(pub u64);
 pub const DRM_IOCTL_GET_CAP: IoctlReqWriteRead<DrmCardDevice, DrmGetCap, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmGetCap>(0x0c)) };
 
+/// If set to 1, the driver supports creating "dumb buffers" via [`DRM_IOCTL_MODE_CREATE_DUMB`].
 pub const DRM_CAP_DUMB_BUFFER: DrmCap = DrmCap(0x1);
+/// If set to 1, the kernel supports specifying a CRTC index
+/// in the high bits of [`DrmWaitVblankRequest::type`].
 pub const DRM_CAP_VBLANK_HIGH_CRTC: DrmCap = DrmCap(0x2);
+/// The preferred bit depth for "dumb buffers".
+///
+/// The bit depth is the number of bits used to indicate the color of a single
+/// pixel excluding any padding. This is different from the number of bits per
+/// pixel. For instance, XRGB8888 has a bit depth of 24 but has 32 bits per
+/// pixel.
+///
+/// This preference only applies to dumb buffers, and is irrelevant for
+/// other types of buffers.
 pub const DRM_CAP_DUMB_PREFERRED_DEPTH: DrmCap = DrmCap(0x3);
+/// If set to 1, the driver prefers userspace to render to a shadow buffer
+/// instead of directly rendering to a dumb buffer. For best speed, userspace
+/// should do streaming ordered memory copies into the dumb buffer and never
+/// read from it.
+///
+/// This preference only applies to dumb buffers, and is irrelevant for
+/// other types of buffers.
 pub const DRM_CAP_DUMB_PREFER_SHADOW: DrmCap = DrmCap(0x4);
+/// Bitfield of supported PRIME sharing capabilities. See [`DRM_PRIME_CAP_IMPORT`]
+/// and [`DRM_PRIME_CAP_EXPORT`].
+///
+/// Starting from kernel version 6.6, both `DRM_PRIME_CAP_IMPORT` and
+/// `DRM_PRIME_CAP_EXPORT` are always advertised.
+///
+/// PRIME buffers are exposed as dma-buf file descriptors.
 pub const DRM_CAP_PRIME: DrmCap = DrmCap(0x5);
+/// If this bit is set in [`DRM_CAP_PRIME`], the driver supports importing PRIME
+/// buffers via [`DRM_IOCTL_PRIME_FD_TO_HANDLE`].
 pub const DRM_PRIME_CAP_IMPORT: DrmCap = DrmCap(0x1);
+/// If this bit is set in [`DRM_CAP_PRIME`], the driver supports exporting PRIME
+/// buffers via [`DRM_IOCTL_PRIME_HANDLE_TO_FD`].
 pub const DRM_PRIME_CAP_EXPORT: DrmCap = DrmCap(0x2);
+/// If set to 0, the kernel will report timestamps with `CLOCK_REALTIME` in
+/// [`crate::event::raw::DrmEventVblank`]. If set to 1, the kernel will report
+/// timestamps with `CLOCK_MONOTONIC`.
+///
+/// Starting from kernel version 2.6.39, the default value for this capability
+/// is 1. Starting kernel version 4.15, this capability is always set to 1.
 pub const DRM_CAP_TIMESTAMP_MONOTONIC: DrmCap = DrmCap(0x6);
+/// If set to 1, the driver supports [`DRM_MODE_PAGE_FLIP_ASYNC`] for legacy
+/// page-flips.
 pub const DRM_CAP_ASYNC_PAGE_FLIP: DrmCap = DrmCap(0x7);
+/// A plane width that is valid to use for a cursor plane.
 pub const DRM_CAP_CURSOR_WIDTH: DrmCap = DrmCap(0x8);
+/// A plane height that is valid to use for a cursor plane.
 pub const DRM_CAP_CURSOR_HEIGHT: DrmCap = DrmCap(0x9);
+/// If set to 1, the driver supports supplying modifiers in [`DRM_IOCTL_MODE_ADDFB2`].
 pub const DRM_CAP_ADDFB2_MODIFIERS: DrmCap = DrmCap(0x10);
 pub const DRM_CAP_PAGE_FLIP_TARGET: DrmCap = DrmCap(0x11);
+/// If set to 1, the kernel supports reporting the CRTC ID in
+/// [`crate::event::raw::DrmEventVblank::crtc_id`] for
+/// [`crate::event::raw::DRM_EVENT_VBLANK`] and
+/// [`crate::event::raw::DRM_EVENT_FLIP_COMPLETE`] events.
+///
+/// Starting kernel version 4.12, this capability is always set to 1.
 pub const DRM_CAP_CRTC_IN_VBLANK_EVENT: DrmCap = DrmCap(0x12);
+/// If set to 1, the driver supports sync objects.
 pub const DRM_CAP_SYNCOBJ: DrmCap = DrmCap(0x13);
+/// If set to 1, the driver supports timeline operations on sync objects.
 pub const DRM_CAP_SYNCOBJ_TIMELINE: DrmCap = DrmCap(0x14);
+/// If set to 1, the driver supports [`DRM_MODE_PAGE_FLIP_ASYNC`] for atomic commits.
+pub const DRM_CAP_ATOMIC_ASYNC_PAGE_FLIP: DrmCap = DrmCap(0x15);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -170,35 +221,46 @@ pub struct DrmClientCap(pub u64);
 pub const DRM_IOCTL_SET_CLIENT_CAP: IoctlReqWrite<DrmCardDevice, DrmSetClientCap, int> =
     unsafe { ioctl_write(_IOW::<DrmSetClientCap>(0x0d)) };
 
-/**
- * If set to 1, the DRM core will expose the stereo 3D capabilities of the
- * monitor by advertising the supported 3D layouts in the flags of struct
- * drm_mode_modeinfo.
- */
+/// If set to 1, the DRM core will expose the stereo 3D capabilities of the
+/// monitor by advertising the supported 3D layouts in the flags of struct
+/// drm_mode_modeinfo.
 pub const DRM_CLIENT_CAP_STEREO_3D: DrmClientCap = DrmClientCap(1);
 
-/**
- * If set to 1, the DRM core will expose all planes (overlay, primary, and
- * cursor) to userspace.
- */
+/// If set to 1, the DRM core will expose all planes (overlay, primary, and
+/// cursor) to userspace.
 pub const DRM_CLIENT_CAP_UNIVERSAL_PLANES: DrmClientCap = DrmClientCap(2);
 
-/**
- * If set to 1, the DRM core will expose atomic properties to userspace.
- */
+/// If set to 1, the DRM core will expose atomic properties to userspace.
 pub const DRM_CLIENT_CAP_ATOMIC: DrmClientCap = DrmClientCap(3);
 
-/**
- * If set to 1, the DRM core will provide aspect ratio information in modes.
- */
+/// If set to 1, the DRM core will provide aspect ratio information in modes.
 pub const DRM_CLIENT_CAP_ASPECT_RATIO: DrmClientCap = DrmClientCap(4);
 
-/**
- * If set to 1, the DRM core will expose special connectors to be used for
- * writing back to memory the scene setup in the commit. Depends on client
- * also supporting DRM_CLIENT_CAP_ATOMIC
- */
+/// If set to 1, the DRM core will expose special connectors to be used for
+/// writing back to memory the scene setup in the commit. Depends on client
+/// also supporting DRM_CLIENT_CAP_ATOMIC
 pub const DRM_CLIENT_CAP_WRITEBACK_CONNECTORS: DrmClientCap = DrmClientCap(5);
+
+/// Drivers for para-virtualized hardware (e.g. `vmwgfx`, `qxl`, `virtio` and
+/// `virtualbox`) have additional restrictions for cursor planes (thus
+/// making cursor planes on those drivers not truly universal,) e.g.
+/// they need cursor planes to act like one would expect from a mouse
+/// cursor and have correctly set hotspot properties.
+/// If this client cap is not set the DRM core will hide cursor plane on
+/// those virtualized drivers because not setting it implies that the
+/// client is not capable of dealing with those extra restictions.
+/// Clients which do set cursor hotspot and treat the cursor plane
+/// like a mouse cursor should set this property.
+/// The client must enable [`DRM_CLIENT_CAP_ATOMIC`] first.
+///
+/// Setting this property on drivers which do not special case
+/// cursor planes (i.e. non-virtualized drivers) will return
+/// [`linux_io::result::EOPNOTSUPP`], which can be used by userspace
+/// to gauge requirements of the hardware/drivers they're running on.
+///
+/// This capability is always supported for atomic-capable virtualized
+/// drivers starting from kernel version 6.6.
+pub const DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT: DrmClientCap = DrmClientCap(6);
 
 #[repr(C)]
 #[derive(Debug)]
