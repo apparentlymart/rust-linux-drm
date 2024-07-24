@@ -6,6 +6,13 @@ extern crate alloc;
 /// Types and other symbols used for event handling.
 pub mod event;
 /// Low-level `ioctl`-based access to DRM devices.
+///
+/// The struct types in this module are likely to change in breaking ways
+/// in a future release because they currently behave as a memory safety
+/// hole by allowing safe Rust to ask the kernel to write to arbitrary
+/// memory addresses. Prefer to use the [`Card`] abstraction to avoid being
+/// impacted by those changes. (Even that is subject to change until
+/// a v1.0 release, but is less likely to be _totally_ reworked.)
 pub mod ioctl;
 /// Types and other symbols used for modesetting.
 pub mod modeset;
@@ -15,6 +22,7 @@ use core::ptr::null_mut;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, string::String};
 use linux_io::fd::ioctl::IoctlReq;
 use modeset::{EncoderState, ModeInfo, ModeProp};
 use result::{Error, InitError};
@@ -124,6 +132,53 @@ impl Card {
     pub fn drop_master(&mut self) -> Result<(), Error> {
         self.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ())?;
         Ok(())
+    }
+
+    pub fn property_meta(&self, prop_id: u32) -> Result<modeset::PropertyMeta, Error> {
+        let mut tmp = ioctl::DrmModeGetProperty::zeroed();
+        tmp.prop_id = prop_id;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
+
+        let name_raw = tmp.name.split(|c| *c == 0).next().unwrap();
+        let name = String::from_utf8_lossy(name_raw).into_owned();
+
+        let (typ, immutable) = modeset::PropertyType::from_raw_flags(tmp.flags);
+
+        const ENUM_TYPES: u32 = ioctl::DRM_MODE_PROP_ENUM | ioctl::DRM_MODE_PROP_BITMASK;
+        let is_enum = (tmp.flags & ENUM_TYPES) != 0;
+        if !is_enum {
+            tmp.count_enum_blobs = 0;
+        }
+        let mut values = vec_with_capacity::<u64>(tmp.count_values as usize)?;
+        let mut enum_blobs_raw =
+            vec_with_capacity::<ioctl::DrmModePropertyEnum>(tmp.count_enum_blobs as usize)?;
+        if tmp.count_values != 0 || tmp.count_enum_blobs != 0 {
+            // We'll make a second call to populate the arrays, then.
+            tmp.values_ptr = values.as_mut_ptr() as u64;
+            tmp.enum_blob_ptr = enum_blobs_raw.as_mut_ptr() as u64;
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
+
+            unsafe {
+                values.set_len(tmp.count_values as usize);
+                if is_enum {
+                    enum_blobs_raw.set_len(tmp.count_enum_blobs as usize);
+                }
+            }
+        }
+        let mut enum_names = BTreeMap::new();
+        for raw in enum_blobs_raw.into_iter() {
+            let name_raw = raw.name.split(|c| *c == 0).next().unwrap();
+            let name = String::from_utf8_lossy(name_raw).into_owned();
+            enum_names.insert(raw.value, name);
+        }
+
+        Ok(modeset::PropertyMeta {
+            name,
+            typ,
+            immutable,
+            values,
+            enum_names,
+        })
     }
 
     pub fn resources(&self) -> Result<modeset::CardResources, Error> {

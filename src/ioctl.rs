@@ -79,6 +79,14 @@ macro_rules! impl_zeroed {
                 unsafe { ::core::mem::zeroed() }
             }
         }
+
+        /// The default value is the result of [`Self::zeroed`].
+        impl ::core::default::Default for $t {
+            #[inline(always)]
+            fn default() -> Self {
+                Self::zeroed()
+            }
+        }
     };
 }
 
@@ -548,6 +556,8 @@ pub const DRM_MODE_CURSOR_BO: u32 = 0x01;
 pub const DRM_MODE_CURSOR_MOVE: u32 = 0x02;
 pub const DRM_MODE_CURSOR_FLAGS: u32 = 0x03;
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeAtomic {
     pub flags: u32,
     pub count_objs: u32,
@@ -599,6 +609,8 @@ pub const DRM_MODE_ATOMIC_FLAGS: u32 = DRM_MODE_PAGE_FLIP_EVENT
     | DRM_MODE_ATOMIC_NONBLOCK
     | DRM_MODE_ATOMIC_ALLOW_MODESET;
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeObjGetProperties {
     pub props_ptr: u64,
     pub prop_values_ptr: u64,
@@ -615,6 +627,8 @@ pub const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: IoctlReqWriteRead<
     int,
 > = unsafe { ioctl_writeread(_IOWR::<DrmModeObjGetProperties>(0xb9)) };
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeObjSetProperty {
     pub value: u64,
     pub prop_id: u32,
@@ -640,6 +654,8 @@ pub const DRM_MODE_OBJECT_BLOB: u32 = 0xbbbbbbbb;
 pub const DRM_MODE_OBJECT_PLANE: u32 = 0xeeeeeeee;
 pub const DRM_MODE_OBJECT_ANY: u32 = 0;
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeGetPlaneRes {
     pub plane_id_ptr: u64,
     pub count_planes: u32,
@@ -653,6 +669,8 @@ pub const DRM_IOCTL_MODE_GETPLANERESOURCES: IoctlReqWriteRead<
     int,
 > = unsafe { ioctl_writeread(_IOWR::<DrmModeGetPlaneRes>(0xb5)) };
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeGetPlane {
     pub plane_id: u32,
     pub crtc_id: u32,
@@ -668,6 +686,8 @@ impl_zeroed!(DrmModeGetPlane);
 pub const DRM_IOCTL_MODE_GETPLANE: IoctlReqWriteRead<DrmCardDevice, DrmModeGetPlane, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeGetPlane>(0xb6)) };
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeSetPlane {
     pub plane_id: u32,
     pub crtc_id: u32,
@@ -693,6 +713,83 @@ pub const DRM_IOCTL_MODE_SETPLANE: IoctlReqWriteRead<DrmCardDevice, DrmModeSetPl
 pub const DRM_MODE_PRESENT_TOP_FIELD: u32 = 1 << 0;
 pub const DRM_MODE_PRESENT_BOTTOM_FIELD: u32 = 1 << 1;
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModeGetProperty {
+    pub values_ptr: u64,
+    pub enum_blob_ptr: u64,
+    pub prop_id: u32,
+    pub flags: u32,
+    pub name: [u8; DRM_PROP_NAME_LEN],
+    pub count_values: u32,
+    pub count_enum_blobs: u32,
+}
+
+impl_zeroed!(DrmModeGetProperty);
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DrmModePropertyEnum {
+    pub value: u64,
+    pub name: [u8; DRM_PROP_NAME_LEN],
+}
+
+impl_zeroed!(DrmModePropertyEnum);
+
+/// User-space can perform a `GETPROPERTY` request to retrieve information about a
+/// property. The same property may be attached to multiple objects.
+///
+/// The meaning of [`DrmModeGetProperty::values_ptr`] changes depending on the
+/// property type.
+///
+/// [`DrmModeGetProperty::enum_blob_ptr`] and [`DrmModeGetProperty::count_enum_blobs`]
+/// are only meaningful when the property has the type [`DRM_MODE_PROP_ENUM`] or
+/// [`DRM_MODE_PROP_BITMASK`]. For backwards compatibility, the kernel will always set
+/// [`DrmModeGetProperty::count_enum_blobs`] to
+/// zero when the property has the type [`DRM_MODE_PROP_BLOB`]. User-space must
+/// ignore these two fields if the property has a different type.
+///
+/// Userspace is expected to retrieve values and enums by performing this request
+/// at least twice: the first time to retrieve the number of elements, the
+/// second time to retrieve the elements themselves.
+///
+/// To retrieve the number of elements, set [`DrmModeGetProperty::count_values`]
+/// and [`DrmModeGetProperty::count_enum_blobs`] to zero. [`DrmModeGetProperty::count_values`]
+/// will be updated with the number of elements. If the property has the type
+/// [`DRM_MODE_PROP_ENUM`] or [`DRM_MODE_PROP_BITMASK`], [`DrmModeGetProperty::count_enum_blobs`]
+/// will be updated as well.
+///
+/// To retrieve the elements themselves, allocate an array for
+/// [`DrmModeGetProperty::values_ptr`] and set [`DrmModeGetProperty::count_values`] to
+/// its capacity. If the property has the type [`DRM_MODE_PROP_ENUM`] or [`DRM_MODE_PROP_BITMASK`],
+/// allocate an array for [`DrmModeGetProperty::enum_blob_ptr`] and set
+/// [`DrmModeGetProperty::count_enum_blobs`] to its capacity. Sending the request
+/// again will then fill the arrays.
+pub const DRM_IOCTL_MODE_GETPROPERTY: IoctlReqWriteRead<DrmCardDevice, DrmModeGetProperty, int> =
+    unsafe { ioctl_writeread(_IOWR::<DrmModeGetProperty>(0xaa)) };
+
+pub const DRM_PROP_NAME_LEN: usize = 32;
+
+pub const DRM_MODE_PROP_PENDING: u32 = 1 << 0;
+pub const DRM_MODE_PROP_RANGE: u32 = 1 << 1;
+pub const DRM_MODE_PROP_IMMUTABLE: u32 = 1 << 2;
+pub const DRM_MODE_PROP_ENUM: u32 = 1 << 3;
+pub const DRM_MODE_PROP_BLOB: u32 = 1 << 4;
+pub const DRM_MODE_PROP_BITMASK: u32 = 1 << 5;
+pub const DRM_MODE_PROP_LEGACY_TYPE: u32 =
+    DRM_MODE_PROP_RANGE | DRM_MODE_PROP_ENUM | DRM_MODE_PROP_BLOB | DRM_MODE_PROP_BITMASK;
+pub const DRM_MODE_PROP_EXTENDED_TYPE: u32 = 0x0000ffc0;
+pub const DRM_MODE_PROP_OBJECT: u32 = DRM_MODE_PROP_TYPE(1);
+pub const DRM_MODE_PROP_SIGNED_RANGE: u32 = DRM_MODE_PROP_TYPE(2);
+
+#[allow(non_snake_case)]
+#[inline(always)]
+pub const fn DRM_MODE_PROP_TYPE(n: u32) -> u32 {
+    n << 6
+}
+
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeCreateBlob {
     pub data: u64,
     pub length: u32,
@@ -704,6 +801,8 @@ impl_zeroed!(DrmModeCreateBlob);
 pub const DRM_IOCTL_MODE_CREATEPROPBLOB: IoctlReqWriteRead<DrmCardDevice, DrmModeCreateBlob, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCreateBlob>(0xbd)) };
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct DrmModeDestroyBlob {
     pub blob_id: u32,
 }

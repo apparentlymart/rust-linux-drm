@@ -1,6 +1,8 @@
 use core::ops::{BitAnd, BitOr};
 use core::slice;
 
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::sync::Weak;
 use alloc::vec::Vec;
 
@@ -265,6 +267,46 @@ impl From<PageFlipFlags> for u32 {
     #[inline(always)]
     fn from(value: PageFlipFlags) -> Self {
         value.0
+    }
+}
+
+#[derive(Debug)]
+pub struct PropertyMeta {
+    pub name: String,
+    pub typ: PropertyType,
+    pub immutable: bool,
+    pub values: Vec<u64>,
+    pub enum_names: BTreeMap<u64, String>,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+#[repr(u32)]
+pub enum PropertyType {
+    Unknown = 0,
+    Range = crate::ioctl::DRM_MODE_PROP_RANGE,
+    Enum = crate::ioctl::DRM_MODE_PROP_ENUM,
+    Blob = crate::ioctl::DRM_MODE_PROP_BLOB,
+    Bitmask = crate::ioctl::DRM_MODE_PROP_BITMASK,
+    Object = crate::ioctl::DRM_MODE_PROP_OBJECT,
+    SignedRange = crate::ioctl::DRM_MODE_PROP_SIGNED_RANGE,
+}
+
+impl PropertyType {
+    pub fn from_raw_flags(flags: u32) -> (Self, bool) {
+        let immutable = (flags & crate::ioctl::DRM_MODE_PROP_IMMUTABLE) != 0;
+        let type_raw = flags
+            & (crate::ioctl::DRM_MODE_PROP_LEGACY_TYPE | crate::ioctl::DRM_MODE_PROP_EXTENDED_TYPE);
+        let typ = match type_raw {
+            crate::ioctl::DRM_MODE_PROP_RANGE => Self::Range,
+            crate::ioctl::DRM_MODE_PROP_ENUM => Self::Enum,
+            crate::ioctl::DRM_MODE_PROP_BLOB => Self::Blob,
+            crate::ioctl::DRM_MODE_PROP_BITMASK => Self::Bitmask,
+            crate::ioctl::DRM_MODE_PROP_OBJECT => Self::Object,
+            crate::ioctl::DRM_MODE_PROP_SIGNED_RANGE => Self::SignedRange,
+            _ => Self::Unknown,
+        };
+        (typ, immutable)
     }
 }
 
