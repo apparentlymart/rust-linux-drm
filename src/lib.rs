@@ -18,6 +18,7 @@ pub mod ioctl;
 pub mod modeset;
 pub mod result;
 
+use core::iter;
 use core::ptr::null_mut;
 
 use alloc::sync::Arc;
@@ -181,11 +182,64 @@ impl Card {
         })
     }
 
+    pub fn object_properties(
+        &self,
+        obj_id: impl Into<modeset::ObjectId>,
+    ) -> Result<Vec<modeset::ModeProp>, Error> {
+        fn real_object_properties(
+            card: &Card,
+            obj_id: modeset::ObjectId,
+        ) -> Result<Vec<modeset::ModeProp>, Error> {
+            let (type_id, raw_id) = obj_id.as_raw_type_and_id();
+            let mut tmp = ioctl::DrmModeObjGetProperties::zeroed();
+            tmp.obj_type = type_id;
+            tmp.obj_id = raw_id;
+            card.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
+
+            // The sets of properties can potentially change due to hotplug events
+            // while we're producing this result, and so we need to keep retrying
+            // until we get a consistent result.
+            loop {
+                let prop_count = tmp.count_props as usize;
+
+                let mut prop_ids = vec_with_capacity::<u32>(prop_count)?;
+                let mut prop_values = vec_with_capacity::<u64>(prop_count)?;
+
+                tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
+                tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+
+                card.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
+
+                let new_prop_count = tmp.count_props as usize;
+                if new_prop_count != prop_count {
+                    // The number of properties has changed since the previous
+                    // request, so we'll retry.
+                    continue;
+                }
+
+                // Safety: We ensured the slices capacities above, and ensured
+                // that the kernel has populated the number of ids we expected
+                // in each case.
+                unsafe {
+                    prop_ids.set_len(prop_count);
+                    prop_values.set_len(prop_count);
+                };
+                return Ok(iter::zip(prop_ids.into_iter(), prop_values.into_iter())
+                    .map(|(id, val)| modeset::ModeProp {
+                        prop_id: id,
+                        value: val,
+                    })
+                    .collect());
+            }
+        }
+        real_object_properties(self, obj_id.into())
+    }
+
     pub fn resources(&self) -> Result<modeset::CardResources, Error> {
         // The sets of resources can potentially change due to hotplug events
         // while we're producing this result, and so we need to keep retrying
         // until we get a consistent result.
-        loop {
+        let mut ret = loop {
             let mut r = ioctl::DrmModeCardRes::zeroed();
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
             let fb_count = r.count_fbs as usize;
@@ -234,16 +288,42 @@ impl Card {
                 crtc_ids.set_len(crtc_count);
                 encoder_ids.set_len(encoder_count);
             };
-            return Ok(modeset::CardResources {
+            break modeset::CardResources {
                 fb_ids,
                 connector_ids,
                 crtc_ids,
                 encoder_ids,
+                plane_ids: Vec::new(),
                 min_width: r.min_width,
                 max_width: r.max_width,
                 min_height: r.min_height,
                 max_height: r.max_height,
-            });
+            };
+        };
+
+        // The planes come from a different ioctl request so we'll deal
+        // with those now too. Similar requirement to retry.
+        loop {
+            let mut tmp = ioctl::DrmModeGetPlaneRes::zeroed();
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
+
+            let plane_count = tmp.count_planes as usize;
+            let mut plane_ids = vec_with_capacity::<u32>(plane_count)?;
+            tmp.plane_id_ptr = plane_ids.as_mut_ptr() as u64;
+
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
+            if tmp.count_planes as usize != plane_count {
+                // Need to try again, then.
+                continue;
+            }
+
+            // Safety: We ensured the slices capacity above, and ensured
+            // that the kernel has populated the number of ids we expected.
+            unsafe {
+                plane_ids.set_len(plane_count);
+            };
+            ret.plane_ids = plane_ids;
+            return Ok(ret);
         }
     }
 

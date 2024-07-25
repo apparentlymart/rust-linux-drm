@@ -12,6 +12,7 @@ pub struct CardResources {
     pub crtc_ids: Vec<u32>,
     pub connector_ids: Vec<u32>,
     pub encoder_ids: Vec<u32>,
+    pub plane_ids: Vec<u32>,
     pub min_width: u32,
     pub max_width: u32,
     pub min_height: u32,
@@ -307,6 +308,35 @@ impl PropertyType {
             _ => Self::Unknown,
         };
         (typ, immutable)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub enum ObjectId {
+    Crtc(u32),
+    Connector(u32),
+    Encoder(u32),
+    Mode(u32),
+    Property(u32),
+    Framebuffer(u32),
+    Blob(u32),
+    Plane(u32),
+}
+
+impl ObjectId {
+    pub fn as_raw_type_and_id(self) -> (u32, u32) {
+        use crate::ioctl;
+        match self {
+            ObjectId::Crtc(id) => (ioctl::DRM_MODE_OBJECT_CRTC, id),
+            ObjectId::Connector(id) => (ioctl::DRM_MODE_OBJECT_CONNECTOR, id),
+            ObjectId::Encoder(id) => (ioctl::DRM_MODE_OBJECT_ENCODER, id),
+            ObjectId::Mode(id) => (ioctl::DRM_MODE_OBJECT_MODE, id),
+            ObjectId::Property(id) => (ioctl::DRM_MODE_OBJECT_PROPERTY, id),
+            ObjectId::Framebuffer(id) => (ioctl::DRM_MODE_OBJECT_FB, id),
+            ObjectId::Blob(id) => (ioctl::DRM_MODE_OBJECT_BLOB, id),
+            ObjectId::Plane(id) => (ioctl::DRM_MODE_OBJECT_PLANE, id),
+        }
     }
 }
 
