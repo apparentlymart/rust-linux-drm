@@ -499,7 +499,7 @@ impl Card {
     }
 
     #[inline(always)]
-    fn ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
+    pub fn ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
         &'a self,
         request: Req,
         arg: Req::ExtArg,
