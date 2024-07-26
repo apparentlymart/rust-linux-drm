@@ -419,6 +419,26 @@ impl Card {
         Ok(tmp.into())
     }
 
+    pub fn atomic_commit(
+        &mut self,
+        req: modeset::AtomicRequest,
+        flags: modeset::AtomicCommitFlags,
+        user_data: u64,
+    ) -> Result<(), Error> {
+        let mut tmp = ioctl::DrmModeAtomic::zeroed();
+        let mut raw_parts = req.for_ioctl_req();
+        tmp.count_objs = raw_parts.obj_ids.len() as u32;
+        tmp.objs_ptr = raw_parts.obj_ids.as_mut_ptr() as u64;
+        tmp.count_props_ptr = raw_parts.obj_prop_counts.as_mut_ptr() as u64;
+        tmp.props_ptr = raw_parts.prop_ids.as_mut_ptr() as u64;
+        tmp.prop_values_ptr = raw_parts.prop_values.as_mut_ptr() as u64;
+        tmp.flags = flags.0;
+        tmp.user_data = user_data;
+
+        self.ioctl(ioctl::DRM_IOCTL_MODE_ATOMIC, &mut tmp)?;
+        Ok(())
+    }
+
     pub fn reset_crtc(&mut self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
         tmp.crtc_id = crtc_id;

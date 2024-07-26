@@ -6,6 +6,10 @@ use alloc::string::String;
 use alloc::sync::Weak;
 use alloc::vec::Vec;
 
+mod atomic;
+
+pub use atomic::*;
+
 #[derive(Debug)]
 pub struct CardResources {
     pub fb_ids: Vec<u32>,
