@@ -2,7 +2,7 @@ use linux_drm::{
     event::{DrmEvent, GenericDrmEvent},
     modeset::{
         AtomicCommitFlags, CardResources, ConnectionState, ConnectorState, DumbBuffer,
-        DumbBufferRequest, ModeInfo,
+        DumbBufferRequest, ModeInfo, ObjectId,
     },
     result::Error,
     Card, ClientCap, DeviceCap,
@@ -63,12 +63,72 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
         }
 
         println!(
-            "configuring CRTC {} for framebuffer {} and mode {mode_name} on connection {}",
+            "configuring CRTC {} for framebuffer {} and mode {mode_name} on connector {}",
             output.crtc_id,
             output.db.framebuffer_id(),
             conn.id
         );
-        // TODO: Set the relevant properties in `req.
+
+        req.set_property(
+            ObjectId::Connector(output.conn_id),
+            output.conn_prop_ids.crtc_id,
+            output.crtc_id as u64,
+        );
+        req.set_property(
+            ObjectId::Crtc(output.crtc_id),
+            output.crtc_prop_ids.active,
+            1_u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.fb_id,
+            output.db.framebuffer_id() as u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.crtc_id,
+            output.crtc_id as u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.crtc_x,
+            0_u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.crtc_y,
+            0_u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.crtc_w,
+            output.db.width() as u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.crtc_h,
+            output.db.height() as u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.src_x,
+            0_u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.src_y,
+            0_u64,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.src_w,
+            (output.db.width() as u64) << 16,
+        );
+        req.set_property(
+            ObjectId::Plane(output.plane_id),
+            output.plane_prop_ids.src_h,
+            (output.db.height() as u64) << 16,
+        );
     }
 
     println!("atomic commit {req:#?}");
@@ -97,10 +157,14 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
 }
 
 fn prepare_outputs(card: &Card) -> Result<Vec<Output>, Error> {
+    println!("preparing outputs");
+
     let resources = card.resources()?;
     let mut outputs = Vec::<Output>::new();
 
     for id in resources.connector_ids.iter().copied() {
+        println!("preparing output for connector #{id}");
+
         let conn = card.connector_state(id)?;
         if conn.connection_state != ConnectionState::Connected {
             println!("ignoring unconnected connector {id:?}");
@@ -146,9 +210,37 @@ fn prepare_output(
         depth: 24,
         bpp: 32,
     })?;
+
+    // We need to find the primary plane that's currently assigned to this CRTC.
+    // The following is not really a correct way to do it, but it'll work for
+    // now just to test if anything is working here at all. (This makes some
+    // assumptions about how the card is already configured which might not
+    // actually hold in practice.)
+    let mut chosen_plane_id: Option<u32> = None;
+    for plane_id in resources.plane_ids.iter().copied() {
+        let plane = card.plane_state(plane_id)?;
+        if plane.crtc_id == crtc_id {
+            chosen_plane_id = Some(plane_id);
+            break;
+        }
+    }
+    let Some(chosen_plane_id) = chosen_plane_id else {
+        return Err(Error::NonExist);
+    };
+
+    println!("collecting properties");
+    let conn_prop_ids = ConnectorPropIds::new(conn.id, card)?;
+    let crtc_prop_ids = CrtcPropIds::new(crtc_id, card)?;
+    let plane_prop_ids = PlanePropIds::new(chosen_plane_id, card)?;
+
+    println!("collected properties");
     Ok(Output {
         conn_id: conn.id,
+        conn_prop_ids,
         crtc_id,
+        crtc_prop_ids,
+        plane_id: chosen_plane_id,
+        plane_prop_ids,
         mode,
         db,
     })
@@ -159,7 +251,100 @@ struct Output {
     db: DumbBuffer,
     mode: ModeInfo,
     conn_id: u32,
+    conn_prop_ids: ConnectorPropIds,
     crtc_id: u32,
+    crtc_prop_ids: CrtcPropIds,
+    plane_id: u32,
+    plane_prop_ids: PlanePropIds,
+}
+
+#[derive(Debug)]
+struct ConnectorPropIds {
+    crtc_id: u32,
+}
+
+impl ConnectorPropIds {
+    pub fn new(conn_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+        let mut ret: Self = unsafe { core::mem::zeroed() };
+        card.each_object_property_meta(
+            linux_drm::modeset::ObjectId::Connector(conn_id),
+            |meta, _| ret.populate_from(meta),
+        )?;
+        Ok(ret)
+    }
+
+    pub fn populate_from<'card>(&mut self, from: linux_drm::modeset::ObjectPropMeta<'card>) {
+        match from.name() {
+            "CRTC_ID" => self.crtc_id = from.property_id(),
+            _ => {}
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CrtcPropIds {
+    active: u32,
+}
+
+impl CrtcPropIds {
+    pub fn new(crtc_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+        let mut ret: Self = unsafe { core::mem::zeroed() };
+        card.each_object_property_meta(linux_drm::modeset::ObjectId::Crtc(crtc_id), |meta, _| {
+            ret.populate_from(meta)
+        })?;
+        Ok(ret)
+    }
+
+    pub fn populate_from<'card>(&mut self, from: linux_drm::modeset::ObjectPropMeta<'card>) {
+        match from.name() {
+            "ACTIVE" => self.active = from.property_id(),
+            _ => {}
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PlanePropIds {
+    typ: u32,
+    fb_id: u32,
+    crtc_id: u32,
+    crtc_x: u32,
+    crtc_y: u32,
+    crtc_w: u32,
+    crtc_h: u32,
+    src_x: u32,
+    src_y: u32,
+    src_w: u32,
+    src_h: u32,
+}
+
+impl PlanePropIds {
+    pub fn new(plane_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+        let mut ret: Self = unsafe { core::mem::zeroed() };
+        card.each_object_property_meta(
+            linux_drm::modeset::ObjectId::Plane(plane_id),
+            |meta, _| ret.populate_from(meta),
+        )?;
+        Ok(ret)
+    }
+
+    pub fn populate_from<'card>(&mut self, from: linux_drm::modeset::ObjectPropMeta<'card>) {
+        let field: &mut u32 = match from.name() {
+            "type" => &mut self.typ,
+            "FB_ID" => &mut self.fb_id,
+            "CRTC_ID" => &mut self.crtc_id,
+            "CRTC_X" => &mut self.crtc_x,
+            "CRTC_Y" => &mut self.crtc_y,
+            "CRTC_W" => &mut self.crtc_w,
+            "CRTC_H" => &mut self.crtc_h,
+            "SRC_X" => &mut self.src_x,
+            "SRC_Y" => &mut self.src_y,
+            "SRC_W" => &mut self.src_w,
+            "SRC_H" => &mut self.src_h,
+            _ => return,
+        };
+        *field = from.property_id()
+    }
 }
 
 fn map_init_err(e: linux_drm::result::InitError) -> std::io::Error {

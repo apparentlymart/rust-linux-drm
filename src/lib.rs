@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(ptr_metadata)]
+#![feature(ascii_char)]
 
 extern crate alloc;
 
@@ -18,12 +19,11 @@ pub mod ioctl;
 pub mod modeset;
 pub mod result;
 
-use core::iter;
+use core::iter::{self, zip};
 use core::ptr::null_mut;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use alloc::{collections::BTreeMap, string::String};
 use linux_io::fd::ioctl::IoctlReq;
 use modeset::{EncoderState, ModeInfo, ModeProp};
 use result::{Error, InitError};
@@ -135,51 +135,18 @@ impl Card {
         Ok(())
     }
 
-    pub fn property_meta(&self, prop_id: u32) -> Result<modeset::PropertyMeta, Error> {
+    pub fn property_meta(&self, prop_id: u32) -> Result<modeset::ObjectPropMeta, Error> {
         let mut tmp = ioctl::DrmModeGetProperty::zeroed();
         tmp.prop_id = prop_id;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
-
-        let name_raw = tmp.name.split(|c| *c == 0).next().unwrap();
-        let name = String::from_utf8_lossy(name_raw).into_owned();
-
-        let (typ, immutable) = modeset::PropertyType::from_raw_flags(tmp.flags);
-
-        const ENUM_TYPES: u32 = ioctl::DRM_MODE_PROP_ENUM | ioctl::DRM_MODE_PROP_BITMASK;
-        let is_enum = (tmp.flags & ENUM_TYPES) != 0;
-        if !is_enum {
-            tmp.count_enum_blobs = 0;
+        if !tmp.name.is_ascii() {
+            // ObjectPropMeta assumes that the name is always ASCII so
+            // we can cheaply treat it as a str, which has been true
+            // so far but we'll make sure things stay sound by
+            // rejecting any property with a non-ASCII name.
+            return Err(Error::NotSupported);
         }
-        let mut values = vec_with_capacity::<u64>(tmp.count_values as usize)?;
-        let mut enum_blobs_raw =
-            vec_with_capacity::<ioctl::DrmModePropertyEnum>(tmp.count_enum_blobs as usize)?;
-        if tmp.count_values != 0 || tmp.count_enum_blobs != 0 {
-            // We'll make a second call to populate the arrays, then.
-            tmp.values_ptr = values.as_mut_ptr() as u64;
-            tmp.enum_blob_ptr = enum_blobs_raw.as_mut_ptr() as u64;
-            self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
-
-            unsafe {
-                values.set_len(tmp.count_values as usize);
-                if is_enum {
-                    enum_blobs_raw.set_len(tmp.count_enum_blobs as usize);
-                }
-            }
-        }
-        let mut enum_names = BTreeMap::new();
-        for raw in enum_blobs_raw.into_iter() {
-            let name_raw = raw.name.split(|c| *c == 0).next().unwrap();
-            let name = String::from_utf8_lossy(name_raw).into_owned();
-            enum_names.insert(raw.value, name);
-        }
-
-        Ok(modeset::PropertyMeta {
-            name,
-            typ,
-            immutable,
-            values,
-            enum_names,
-        })
+        Ok(modeset::ObjectPropMeta::new(tmp, &self))
     }
 
     pub fn object_properties(
@@ -233,6 +200,69 @@ impl Card {
             }
         }
         real_object_properties(self, obj_id.into())
+    }
+
+    /// Call `f` with the metadata for each property of the object with the given id.
+    ///
+    /// This is intended for use by callers that want to build a lookup
+    /// table of property ids for later use in efficiently setting those
+    /// properties. Pass a closure that mutates the lookup table only
+    /// for the subset of properties that are interesting.
+    pub fn each_object_property_meta(
+        &self,
+        obj_id: impl Into<modeset::ObjectId>,
+        mut f: impl FnMut(modeset::ObjectPropMeta, u64),
+    ) -> Result<(), Error> {
+        let obj_id = obj_id.into();
+        let (type_id, raw_id) = obj_id.as_raw_type_and_id();
+        let mut tmp = ioctl::DrmModeObjGetProperties::zeroed();
+        tmp.obj_type = type_id;
+        tmp.obj_id = raw_id;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
+        if tmp.count_props == 0 {
+            return Ok(());
+        }
+
+        let (prop_ids, prop_values) = loop {
+            let prop_count = tmp.count_props as usize;
+            let mut prop_ids = vec_with_capacity::<u32>(prop_count)?;
+            let mut prop_values = vec_with_capacity::<u64>(prop_count)?;
+            tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
+            tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+            self.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
+
+            let new_prop_count = tmp.count_props as usize;
+            if new_prop_count != prop_count {
+                // The number of properties has changed since the previous
+                // request, so we'll retry.
+                continue;
+            }
+
+            // Safety: We ensured the slice capacities above, and ensured
+            // that the kernel has populated the number of ids we expected.
+            unsafe {
+                prop_ids.set_len(prop_count);
+                prop_values.set_len(prop_count);
+            };
+            break (prop_ids, prop_values);
+        };
+
+        for (prop_id, value) in zip(prop_ids, prop_values) {
+            let mut raw = ioctl::DrmModeGetProperty::zeroed();
+            raw.prop_id = prop_id;
+            self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut raw)?;
+            // We can only produce a str from a property name that is all ASCII
+            // characters, which is true for all property names used in the kernel
+            // so far. We'll just ignore any properties that have non-ASCII names
+            // for now, and then adjust this to do something else if an important
+            // non-ASCII name shows up in a later kernel release.
+            if !raw.name.is_ascii() {
+                continue;
+            }
+            f(modeset::ObjectPropMeta::new(raw, &self), value);
+        }
+
+        Ok(())
     }
 
     pub fn resources(&self) -> Result<modeset::CardResources, Error> {
@@ -417,6 +447,19 @@ impl Card {
         tmp.crtc_id = crtc_id;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETCRTC, &mut tmp)?;
         Ok(tmp.into())
+    }
+
+    pub fn plane_state(&self, plane_id: u32) -> Result<modeset::PlaneState, Error> {
+        let mut tmp = ioctl::DrmModeGetPlane::zeroed();
+        tmp.plane_id = plane_id;
+        self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANE, &mut tmp)?;
+        Ok(modeset::PlaneState {
+            id: tmp.plane_id,
+            crtc_id: tmp.crtc_id,
+            fb_id: tmp.fb_id,
+            possible_crtcs: tmp.possible_crtcs,
+            gamma_size: tmp.gamma_size,
+        })
     }
 
     pub fn atomic_commit(
@@ -705,7 +748,9 @@ impl From<ClientCap> for ioctl::DrmClientCap {
 // This is intended for situations where the kernel will then populate the
 // reserved buffer and then the caller will set the length to something no
 // greater than the capacity before returning.
-fn vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, alloc::collections::TryReserveError> {
+pub(crate) fn vec_with_capacity<T>(
+    capacity: usize,
+) -> Result<Vec<T>, alloc::collections::TryReserveError> {
     let mut ret = Vec::<T>::new();
     ret.try_reserve_exact(capacity)?;
     Ok(ret)

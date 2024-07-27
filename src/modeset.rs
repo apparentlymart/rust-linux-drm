@@ -1,8 +1,6 @@
 use core::ops::{BitAnd, BitOr};
 use core::slice;
 
-use alloc::collections::BTreeMap;
-use alloc::string::String;
 use alloc::sync::Weak;
 use alloc::vec::Vec;
 
@@ -142,6 +140,15 @@ impl From<crate::ioctl::DrmModeCrtc> for CrtcState {
 }
 
 #[derive(Debug)]
+pub struct PlaneState {
+    pub id: u32,
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub possible_crtcs: u32,
+    pub gamma_size: u32,
+}
+
+#[derive(Debug)]
 pub struct ModeInfo {
     pub name: Vec<u8>,
     pub clock: u32,
@@ -276,15 +283,6 @@ impl From<PageFlipFlags> for u32 {
 }
 
 #[derive(Debug)]
-pub struct PropertyMeta {
-    pub name: String,
-    pub typ: PropertyType,
-    pub immutable: bool,
-    pub values: Vec<u64>,
-    pub enum_names: BTreeMap<u64, String>,
-}
-
-#[derive(Debug)]
 #[non_exhaustive]
 #[repr(u32)]
 pub enum PropertyType {
@@ -312,6 +310,142 @@ impl PropertyType {
             _ => Self::Unknown,
         };
         (typ, immutable)
+    }
+}
+
+#[derive(Debug)]
+pub struct ObjectPropMeta<'card> {
+    pub(crate) raw: crate::ioctl::DrmModeGetProperty,
+    pub(crate) card: &'card crate::Card,
+}
+
+impl<'card> ObjectPropMeta<'card> {
+    #[inline(always)]
+    pub(crate) fn new(raw: crate::ioctl::DrmModeGetProperty, card: &'card crate::Card) -> Self {
+        Self { raw, card }
+    }
+
+    #[inline]
+    pub fn property_id(&self) -> u32 {
+        self.raw.prop_id
+    }
+
+    pub fn name(&self) -> &str {
+        let raw = &self.raw.name[..];
+        let raw = raw.split(|c| *c == 0).next().unwrap();
+        // Safety: We assume that raw.name is always ASCII; that should
+        // have been guaranteed by any codepath that instantiates
+        // an ObjectPropMeta object.
+        let raw = unsafe { raw.as_ascii_unchecked() };
+        raw.as_str()
+    }
+
+    #[inline]
+    pub fn property_type(&self) -> PropertyType {
+        let (ret, _) = PropertyType::from_raw_flags(self.raw.flags);
+        ret
+    }
+
+    #[inline]
+    pub fn is_immutable(&self) -> bool {
+        let (_, immut) = PropertyType::from_raw_flags(self.raw.flags);
+        immut
+    }
+
+    #[inline]
+    pub fn is_mutable(&self) -> bool {
+        !self.is_immutable()
+    }
+
+    pub fn values(&self) -> Result<Vec<u64>, crate::Error> {
+        let mut count = self.raw.count_values as usize;
+        loop {
+            let mut values = crate::vec_with_capacity::<u64>(count)?;
+
+            let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
+            tmp.prop_id = self.raw.prop_id;
+            tmp.count_values = count as u32;
+            tmp.values_ptr = values.as_mut_ptr() as u64;
+
+            self.card
+                .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
+                .unwrap();
+
+            let new_count = tmp.count_values as usize;
+            if new_count != count {
+                count = new_count;
+                continue;
+            }
+
+            // Safety: We confirmed above that the kernel generated the number
+            // of values we were expecting.
+            unsafe {
+                values.set_len(count);
+            }
+            return Ok(values);
+        }
+    }
+
+    pub fn enum_members(&self) -> Result<Vec<ObjectPropEnumMember>, crate::Error> {
+        const ENUM_TYPES: u32 =
+            crate::ioctl::DRM_MODE_PROP_ENUM | crate::ioctl::DRM_MODE_PROP_BITMASK;
+        let is_enum = (self.raw.flags & ENUM_TYPES) != 0;
+        if !is_enum {
+            return Err(crate::Error::NotSupported);
+        }
+
+        let mut count = self.raw.count_enum_blobs as usize;
+        loop {
+            // Safety: The following relies on ObjectPropEnumMember having identical
+            // layout to ioctl::DrmModePropertyEnum, which we ensure by marking
+            // it as repr(transparent).
+            let mut members = crate::vec_with_capacity::<ObjectPropEnumMember>(count)?;
+
+            let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
+            tmp.prop_id = self.raw.prop_id;
+            tmp.count_enum_blobs = count as u32;
+            tmp.enum_blob_ptr = members.as_mut_ptr() as u64;
+
+            self.card
+                .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
+                .unwrap();
+
+            let new_count = tmp.count_enum_blobs as usize;
+            if new_count != count {
+                count = new_count;
+                continue;
+            }
+
+            // Safety: We confirmed above that the kernel generated the number
+            // of values we were expecting.
+            unsafe {
+                members.set_len(count);
+            }
+            return Ok(members);
+        }
+    }
+}
+
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct ObjectPropEnumMember {
+    raw: crate::ioctl::DrmModePropertyEnum,
+}
+
+impl ObjectPropEnumMember {
+    #[inline]
+    pub fn value(&self) -> u64 {
+        self.raw.value
+    }
+
+    pub fn name(&self) -> &str {
+        let raw = &self.raw.name[..];
+        let raw = raw.split(|c| *c == 0).next().unwrap();
+        // The following assumes that the kernel will only use ASCII
+        // characters in enum member names, which has been true so
+        // far.
+        let raw = raw.as_ascii().unwrap();
+        raw.as_str()
     }
 }
 

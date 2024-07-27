@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use linux_drm::{
-    modeset::{ModeProp, ObjectId, PropertyMeta, PropertyType},
+    modeset::{ModeProp, ObjectId, ObjectPropMeta, PropertyType},
     result::Error,
     Card, ClientCap, DeviceCap,
 };
@@ -145,20 +145,43 @@ fn show_property_list(
     Ok(())
 }
 
-fn property_meta<'a>(
+fn property_meta<'a, 'card>(
     prop_id: u32,
     prop_meta: &'a mut HashMap<u32, PropertyMeta>,
     card: &Card,
 ) -> Result<&'a PropertyMeta, Error> {
     Ok(prop_meta.entry(prop_id).or_insert_with(|| {
-        card.property_meta(prop_id).unwrap_or(PropertyMeta {
-            name: String::from("<unknown>"),
-            typ: PropertyType::Unknown,
-            immutable: true,
-            values: Vec::new(),
-            enum_names: BTreeMap::new(),
-        })
+        card.property_meta(prop_id)
+            .map(|meta| {
+                let mut enum_names = BTreeMap::new();
+                for member in meta.enum_members().unwrap() {
+                    enum_names.insert(member.value(), member.name().to_string());
+                }
+                PropertyMeta {
+                    name: meta.name().to_string(),
+                    typ: meta.property_type(),
+                    immutable: meta.is_immutable(),
+                    values: meta.values().unwrap(),
+                    enum_names,
+                }
+            })
+            .unwrap_or(PropertyMeta {
+                name: String::from("<unknown>"),
+                typ: PropertyType::Unknown,
+                immutable: true,
+                values: Vec::new(),
+                enum_names: BTreeMap::new(),
+            })
     }))
+}
+
+#[derive(Debug)]
+pub struct PropertyMeta {
+    pub name: String,
+    pub typ: PropertyType,
+    pub immutable: bool,
+    pub values: Vec<u64>,
+    pub enum_names: BTreeMap<u64, String>,
 }
 
 fn map_init_err(e: linux_drm::result::InitError) -> std::io::Error {

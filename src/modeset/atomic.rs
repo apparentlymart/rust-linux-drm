@@ -1,8 +1,7 @@
-use core::iter;
-use core::ops::BitOr;
-
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use core::iter;
+use core::ops::BitOr;
 
 use super::ObjectId;
 
@@ -25,6 +24,27 @@ impl AtomicRequest {
             objs: BTreeMap::new(),
             total_props: 0,
         }
+    }
+
+    /// Clear any previously-set properties, returning the object to empty.
+    ///
+    /// This function does, however, retain any allocated capacity for
+    /// property-set requests for existing objects, so callers can avoid
+    /// making lots of dynamic memory allocations on every change by
+    /// retaining and reusing a single request object. This optimization
+    /// will only be productive if the object is reused to set a similar
+    /// set of properties on a similar set of objects.
+    pub fn reset(&mut self) {
+        // The idea here is to retain all of our existing BTreeMap elements,
+        // but to reduce the length of the nested vectors to zero. This
+        // therefore means that subsequent uses of the request with similar
+        // object ids and a similar number of properties per object can
+        // avoid the need for lots of reallocation.
+        for (_, v) in self.objs.iter_mut() {
+            v.prop_ids.truncate(0);
+            v.prop_values.truncate(0);
+        }
+        self.total_props = 0;
     }
 
     pub fn set_property(&mut self, obj_id: ObjectId, prop_id: u32, value: u64) {

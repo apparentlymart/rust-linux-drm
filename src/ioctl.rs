@@ -714,7 +714,7 @@ pub const DRM_MODE_PRESENT_TOP_FIELD: u32 = 1 << 0;
 pub const DRM_MODE_PRESENT_BOTTOM_FIELD: u32 = 1 << 1;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DrmModeGetProperty {
     pub values_ptr: u64,
     pub enum_blob_ptr: u64,
@@ -728,7 +728,7 @@ pub struct DrmModeGetProperty {
 impl_zeroed!(DrmModeGetProperty);
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DrmModePropertyEnum {
     pub value: u64,
     pub name: [u8; DRM_PROP_NAME_LEN],
