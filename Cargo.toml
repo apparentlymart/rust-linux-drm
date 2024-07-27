@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-linux-io = "0.8.0"
-linux-unsafe = "0.10.0"
+linux-io = "0.9.1"
+linux-unsafe = "0.11.0"
