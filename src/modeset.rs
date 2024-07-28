@@ -357,6 +357,55 @@ impl<'card> ObjectPropMeta<'card> {
         !self.is_immutable()
     }
 
+    /// Get the minimum and maximum value for a range-typed property.
+    ///
+    /// This is essentially the same as [`Self::values`], except that because it's
+    /// guaranteed that a range property always has exactly two values this function
+    /// can avoid making a dynamic memory allocation and can instead retrieve the
+    /// values directly into a stack object and then return those values.
+    pub fn range(&self) -> Result<(u64, u64), crate::Error> {
+        const RANGE_TYPES: u32 =
+            crate::ioctl::DRM_MODE_PROP_RANGE | crate::ioctl::DRM_MODE_PROP_SIGNED_RANGE;
+        let is_range = (self.raw.flags & RANGE_TYPES) != 0;
+        if !is_range {
+            return Err(crate::Error::NotSupported);
+        }
+        // Range types should always have exactly two values.
+        if self.raw.count_values != 2 {
+            return Err(crate::Error::RemoteFailure);
+        }
+
+        let mut pair = [0_u64; 2];
+
+        let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
+        tmp.prop_id = self.raw.prop_id;
+        tmp.count_values = 2;
+        tmp.values_ptr = &mut pair as *mut _ as u64;
+        self.card
+            .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
+            .unwrap();
+
+        if tmp.count_values != 2 {
+            // Something has gone horribly wrong.
+            return Err(crate::Error::RemoteFailure);
+        }
+
+        Ok((pair[0], pair[1]))
+    }
+
+    /// Get a vector of describing the values that are acceptable for this property.
+    ///
+    /// The meaning of the result depends on the property type:
+    /// - For a range or signed range, the result always has length 2 and describes
+    ///   the minimum and maximum values respectively.
+    ///
+    ///     You can avoid a dynamic memory allocation in this case by using
+    ///     [`Self::range`] instead.
+    /// - For an enum or bitmask, the result describes the values of the
+    ///   valid enumeration members.
+    ///
+    ///     For these it's typically better to use [`Self::enum_members`] since
+    ///     that can also return the name associated with each value.
     pub fn values(&self) -> Result<Vec<u64>, crate::Error> {
         let mut count = self.raw.count_values as usize;
         loop {
@@ -386,6 +435,8 @@ impl<'card> ObjectPropMeta<'card> {
         }
     }
 
+    /// Get a vector describing the valid values for an enum, or the bitfield values
+    /// for a bitmask.
     pub fn enum_members(&self) -> Result<Vec<ObjectPropEnumMember>, crate::Error> {
         const ENUM_TYPES: u32 =
             crate::ioctl::DRM_MODE_PROP_ENUM | crate::ioctl::DRM_MODE_PROP_BITMASK;
