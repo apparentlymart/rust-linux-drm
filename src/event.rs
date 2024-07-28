@@ -3,6 +3,12 @@ pub mod raw;
 extern crate alloc;
 use alloc::vec::Vec;
 
+/// An event emitted from a [`crate::Card`].
+///
+/// DRM supports both generic events that are supported by all drivers and
+/// some driver-specific event types. This library only directly supports
+/// the generic ones, but does still expose driver-specific events in a
+/// raw form for callers to decode themselves.
 #[derive(Debug, Clone)]
 pub enum DrmEvent {
     /// An event of a generic type that's defined for all DRM drivers.
@@ -37,6 +43,7 @@ impl DrmEvent {
     }
 }
 
+/// Enumeration of generic DRM event types.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum GenericDrmEvent {
@@ -46,6 +53,7 @@ pub enum GenericDrmEvent {
 }
 
 impl GenericDrmEvent {
+    /// Try to interpret the given raw event as one of the generic event types.
     pub fn try_from_raw(raw: &raw::DrmEvent) -> Result<Self, ()> {
         match raw.hdr.typ {
             raw::DRM_EVENT_VBLANK => {
@@ -68,6 +76,7 @@ impl GenericDrmEvent {
     }
 }
 
+/// Signals the beginning of a vertical blanking period.
 #[derive(Debug, Clone, Copy)]
 pub struct DrmVblankEvent {
     pub user_data: u64,

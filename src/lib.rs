@@ -28,11 +28,20 @@ pub struct Card {
 }
 
 impl Card {
+    /// Open the file at the given path and attempt to use it as a
+    /// DRM card file descriptor.
+    ///
+    /// Returns [`result::InitError::NotDrmCard`] if the opened file
+    /// does not support the `DRM_IOCTL_VERSION` ioctl request.
     pub fn open(path: &core::ffi::CStr) -> Result<Self, InitError> {
         let f = linux_io::File::open(path, linux_io::OpenOptions::read_write())?;
         Self::from_file(f)
     }
 
+    /// Attempt to use the given file as a DRM card device.
+    ///
+    /// Returns [`result::InitError::NotDrmCard`] if the opened file
+    /// does not support the `DRM_IOCTL_VERSION` ioctl request.
     pub fn from_file<D>(f: linux_io::File<D>) -> Result<Self, InitError> {
         // We'll use the VERSION ioctl to decide whether this file
         // seems to be a DRM card device. To do that we need to
@@ -48,6 +57,8 @@ impl Card {
         Ok(ret)
     }
 
+    /// Wraps the given file in [`Card`] without checking whether
+    /// it supports any DRM card ioctl requests.
     pub unsafe fn from_file_unchecked<D>(f: linux_io::File<D>) -> Self {
         let f: linux_io::File<ioctl::DrmCardDevice> = unsafe { f.to_device(ioctl::DrmCardDevice) };
         Self { f: Arc::new(f) }
@@ -63,6 +74,7 @@ impl Card {
         self.f.fd()
     }
 
+    /// Determine the DRM API version supported by this device.
     pub fn api_version(&self) -> Result<ApiVersion, Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
@@ -73,6 +85,7 @@ impl Card {
         })
     }
 
+    /// Read the driver name into the given slice.
     pub fn read_driver_name<'a>(&self, into: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         let ptr = into.as_mut_ptr();
@@ -81,6 +94,7 @@ impl Card {
         Ok(&mut into[..v.name_len()])
     }
 
+    /// Read the driver name into a vector.
     pub fn driver_name(&self) -> Result<Vec<u8>, Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
@@ -93,11 +107,13 @@ impl Card {
         Ok(ret)
     }
 
+    /// Read a device capability value.
     #[inline(always)]
     pub fn get_device_cap(&self, capability: DeviceCap) -> Result<u64, Error> {
         self.get_device_cap_raw(capability.into())
     }
 
+    /// Read a device capability value using a raw capability number.
     #[inline]
     pub fn get_device_cap_raw(&self, capability: ioctl::DrmCap) -> Result<u64, Error> {
         let mut s = ioctl::DrmGetCap {
@@ -108,11 +124,14 @@ impl Card {
         Ok(s.value)
     }
 
+    /// Read a device capability value using a raw capability number.
     #[inline(always)]
     pub fn set_client_cap(&mut self, capability: ClientCap, value: u64) -> Result<(), Error> {
         self.set_client_cap_raw(capability.into(), value)
     }
 
+    /// Attempt to set a client capability, which might then change the behavior
+    /// of other device functions.
     #[inline]
     pub fn set_client_cap_raw(
         &mut self,
@@ -124,18 +143,25 @@ impl Card {
         Ok(())
     }
 
+    /// Attempt to become the "master" of this device, which is required for
+    /// modesetting.
     #[inline]
     pub fn become_master(&mut self) -> Result<(), Error> {
         self.ioctl(ioctl::DRM_IOCTL_SET_MASTER, ())?;
         Ok(())
     }
 
+    /// Release the "master" status of this device, thus allowing other
+    /// processes to claim it.
     #[inline]
     pub fn drop_master(&mut self) -> Result<(), Error> {
         self.ioctl(ioctl::DRM_IOCTL_DROP_MASTER, ())?;
         Ok(())
     }
 
+    /// Get metadata about a DRM property using its id.
+    ///
+    /// Property ids are assigned dynamically and so must be detected at runtime.
     pub fn property_meta(&self, prop_id: u32) -> Result<modeset::ObjectPropMeta, Error> {
         let mut tmp = ioctl::DrmModeGetProperty::zeroed();
         tmp.prop_id = prop_id;
@@ -150,6 +176,10 @@ impl Card {
         Ok(modeset::ObjectPropMeta::new(tmp, &self))
     }
 
+    /// Get the properties of the specified object in their raw form.
+    ///
+    /// Use either [`Self::property_meta`] or [`Self::each_object_property_meta`]
+    /// to discover the name and type information for each property id.
     pub fn object_properties(
         &self,
         obj_id: impl Into<modeset::ObjectId>,
@@ -276,6 +306,10 @@ impl Card {
         Ok(())
     }
 
+    /// Read information about the modesetting resources available for this device.
+    ///
+    /// The result includes ids for the available connectors, encoders, CRTCs,
+    /// planes, and framebuffers.
     pub fn resources(&self) -> Result<modeset::CardResources, Error> {
         // The sets of resources can potentially change due to hotplug events
         // while we're producing this result, and so we need to keep retrying
@@ -366,6 +400,7 @@ impl Card {
         }
     }
 
+    /// Read current state information for the connector with the given id.
     pub fn connector_state(&self, connector_id: u32) -> Result<modeset::ConnectorState, Error> {
         // Hotplug events can cause the state to change between our calls, so
         // we'll keep retrying until we get a consistent result.
@@ -436,6 +471,7 @@ impl Card {
         }
     }
 
+    /// Read current state information for the encoder with the given id.
     pub fn encoder_state(&self, encoder_id: u32) -> Result<modeset::EncoderState, Error> {
         let mut tmp = ioctl::DrmModeGetEncoder::zeroed();
         tmp.encoder_id = encoder_id;
@@ -449,6 +485,7 @@ impl Card {
         })
     }
 
+    /// Read current state information for the CRTC with the given id.
     pub fn crtc_state(&self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
         tmp.crtc_id = crtc_id;
@@ -456,6 +493,7 @@ impl Card {
         Ok(tmp.into())
     }
 
+    /// Read current state information for the plane with the given id.
     pub fn plane_state(&self, plane_id: u32) -> Result<modeset::PlaneState, Error> {
         let mut tmp = ioctl::DrmModeGetPlane::zeroed();
         tmp.plane_id = plane_id;
@@ -469,6 +507,14 @@ impl Card {
         })
     }
 
+    /// Attempt to commit an atomic modesetting request.
+    ///
+    /// Callers which intend to perform frequent modesetting, such as modesetting on
+    /// every frame for double buffering, are encouraged to retain their
+    /// [`modeset::AtomicRequest`] object and reset it to use again on a subsequent
+    /// request if that request will involve a similar set of objects and properties,
+    /// to minimize the need for reallocating the backing storage for the request
+    /// on every frame.
     pub fn atomic_commit(
         &mut self,
         req: &modeset::AtomicRequest,
@@ -493,6 +539,7 @@ impl Card {
         Ok(())
     }
 
+    /// Reset the given CRTC to its default (zeroed) settings.
     pub fn reset_crtc(&mut self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
         tmp.crtc_id = crtc_id;
@@ -500,6 +547,8 @@ impl Card {
         Ok(tmp.into())
     }
 
+    /// Set the given CRTC to display the image from the given "dumb buffer",
+    /// used for software rendering.
     pub fn set_crtc_dumb_buffer(
         &mut self,
         crtc_id: u32,
@@ -521,6 +570,8 @@ impl Card {
         Ok(tmp.into())
     }
 
+    /// Use a page-flipping request to change the given CRTC to display the image
+    /// from the given "dumb buffer".
     pub fn crtc_page_flip_dumb_buffer(
         &mut self,
         crtd_id: u32,
@@ -535,6 +586,8 @@ impl Card {
         Ok(())
     }
 
+    /// Create a new "dumb buffer" that can be used for portable (hardware-agnostic)
+    /// software rendering.
     pub fn create_dumb_buffer(
         &self,
         req: modeset::DumbBufferRequest,
@@ -636,21 +689,25 @@ impl Card {
         Ok(raws.map(|raw| event::DrmEvent::from_raw(raw)))
     }
 
+    /// Close the filehandle underlying the card object.
     #[inline]
     pub fn close(self) -> linux_io::result::Result<()> {
         let f = self.take_file()?;
         f.close()
     }
 
+    /// Take the file from underneath this card object without closing it.
     pub fn take_file(self) -> linux_io::result::Result<linux_io::File<ioctl::DrmCardDevice>> {
         Arc::into_inner(self.f).ok_or(linux_io::result::EBUSY)
     }
 
+    /// Borrow the file object that this card object wraps.
     #[inline(always)]
     pub fn borrow_file(&self) -> &linux_io::File<ioctl::DrmCardDevice> {
         self.f.as_ref()
     }
 
+    /// Perform a direct ioctl request to the underlying card device filehandle.
     #[inline(always)]
     pub fn ioctl<'a, Req: IoctlReq<'a, ioctl::DrmCardDevice> + Copy>(
         &'a self,
@@ -692,6 +749,7 @@ impl<D> TryFrom<linux_io::File<D>> for Card {
     }
 }
 
+/// DRM API version information.
 #[derive(Debug)]
 pub struct ApiVersion {
     pub major: i64,
@@ -705,6 +763,7 @@ impl core::fmt::Display for ApiVersion {
     }
 }
 
+/// Enumeration of DRM device capabilities.
 #[repr(u64)]
 #[non_exhaustive]
 pub enum DeviceCap {
@@ -733,6 +792,7 @@ impl From<DeviceCap> for ioctl::DrmCap {
     }
 }
 
+/// Enumeration of DRM client capabilities.
 #[repr(u64)]
 #[non_exhaustive]
 pub enum ClientCap {
