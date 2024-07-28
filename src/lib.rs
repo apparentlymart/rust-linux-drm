@@ -541,6 +541,28 @@ impl Card {
         Ok(())
     }
 
+    /// Send the given content to the kernel as a property blob, ready to use
+    /// for assignment to a blob-typed object property.
+    ///
+    /// The returned [`modeset::BlobHandle`] must remain live long enough to
+    /// be assigned to the target property. The blob object in the kernel
+    /// will be destroyed when the blob handle is dropped.
+    pub fn new_property_blob<'card, 'content>(
+        &'card self,
+        content: &'content [u8],
+    ) -> Result<modeset::BlobHandle, Error> {
+        let mut tmp = ioctl::DrmModeCreateBlob::zeroed();
+        if content.len() > (u32::MAX as usize) {
+            return Err(Error::Invalid);
+        }
+        unsafe { tmp.set_data(content.as_ptr(), content.len() as u32) };
+        self.ioctl(ioctl::DRM_IOCTL_MODE_CREATEPROPBLOB, &mut tmp)?;
+        Ok(modeset::BlobHandle {
+            id: Some(tmp.blob_id),
+            f: Arc::downgrade(&self.f),
+        })
+    }
+
     /// Reset the given CRTC to its default (zeroed) settings.
     pub fn reset_crtc(&mut self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();

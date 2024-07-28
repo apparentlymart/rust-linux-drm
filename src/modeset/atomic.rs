@@ -1,15 +1,21 @@
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::iter;
 use core::ops::BitOr;
 
-use super::ObjectId;
+use super::{IntoRawPropertyValue, ObjectId};
 
 /// An atomic modesetting commit request.
 #[derive(Debug)]
 pub struct AtomicRequest {
     objs: BTreeMap<u32, AtomicRequestObj>,
     total_props: u32,
+
+    // When a property is set to something that needs to be dropped
+    // after use, we remember it here so that its drop can be deferred
+    // until the atomic request is dropped or reset.
+    drops: Vec<Box<dyn core::any::Any>>,
 }
 
 #[derive(Debug)]
@@ -23,6 +29,7 @@ impl AtomicRequest {
         Self {
             objs: BTreeMap::new(),
             total_props: 0,
+            drops: Vec::new(),
         }
     }
 
@@ -45,26 +52,39 @@ impl AtomicRequest {
             v.prop_values.truncate(0);
         }
         self.total_props = 0;
+        self.drops.truncate(0);
     }
 
-    pub fn set_property(&mut self, obj_id: ObjectId, prop_id: u32, value: u64) {
-        let (_, obj_id) = obj_id.as_raw_type_and_id();
-        let obj = self.objs.entry(obj_id).or_insert_with(|| AtomicRequestObj {
-            prop_ids: Vec::new(),
-            prop_values: Vec::new(),
-        });
+    pub fn set_property(
+        &mut self,
+        obj_id: ObjectId,
+        prop_id: u32,
+        value: impl IntoRawPropertyValue,
+    ) {
+        fn set(req: &mut AtomicRequest, obj_id: ObjectId, prop_id: u32, value: u64) {
+            let (_, obj_id) = obj_id.as_raw_type_and_id();
+            let obj = req.objs.entry(obj_id).or_insert_with(|| AtomicRequestObj {
+                prop_ids: Vec::new(),
+                prop_values: Vec::new(),
+            });
 
-        // We'll reserve first to make sure that running out of memory can't
-        // cause these two vecs to end up with different lengths when we're done.
-        obj.prop_ids.reserve(1);
-        obj.prop_values.reserve(1);
+            // We'll reserve first to make sure that running out of memory can't
+            // cause these two vecs to end up with different lengths when we're done.
+            obj.prop_ids.reserve(1);
+            obj.prop_values.reserve(1);
 
-        obj.prop_ids.push(prop_id);
-        obj.prop_values.push(value);
-        self.total_props += 1; // panics if request contains more than u32::MAX total properties
-        if self.objs.len() > (u32::MAX as usize) {
-            panic!("too many distinct objects in request");
+            obj.prop_ids.push(prop_id);
+            obj.prop_values.push(value);
+            req.total_props += 1; // panics if request contains more than u32::MAX total properties
+            if req.objs.len() > (u32::MAX as usize) {
+                panic!("too many distinct objects in request");
+            }
         }
+        let (raw_v, drop) = value.into_raw_property_value();
+        if let Some(drop) = drop {
+            self.drops.push(drop);
+        }
+        set(self, obj_id, prop_id, raw_v);
     }
 
     pub(crate) fn for_ioctl_req(&self) -> AtomicRequestRawParts {
