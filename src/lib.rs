@@ -60,6 +60,16 @@ impl Card {
         Self { f: Arc::new(f) }
     }
 
+    /// Get the open file descriptor for the card.
+    ///
+    /// Interacting with this file descriptor outside of the [`Card`] abstraction
+    /// may cause the abstraction to malfunction. It's exposed primarily so
+    /// it can be used with system functions like `poll` to wait for events
+    /// on multiple file descriptors at once.
+    pub fn fd(&self) -> linux_unsafe::int {
+        self.f.fd()
+    }
+
     pub fn api_version(&self) -> Result<ApiVersion, Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
