@@ -133,7 +133,7 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
 
     println!("atomic commit {req:#?}");
     card.atomic_commit(
-        req,
+        &req,
         AtomicCommitFlags::ALLOW_MODESET | AtomicCommitFlags::PAGE_FLIP_EVENT,
         0,
     )?;

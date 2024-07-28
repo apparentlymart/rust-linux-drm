@@ -474,7 +474,7 @@ impl Card {
 
     pub fn atomic_commit(
         &mut self,
-        req: modeset::AtomicRequest,
+        req: &modeset::AtomicRequest,
         flags: modeset::AtomicCommitFlags,
         user_data: u64,
     ) -> Result<(), Error> {
