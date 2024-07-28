@@ -1,8 +1,16 @@
 [package]
 name = "linux-drm"
+description = "Client for the Linux Direct Rendering Manager and Kernel Modesetting APIs."
 version = "0.1.0"
 edition = "2021"
+
+license = "MIT"
+repository = "https://github.com/apparentlymart/rust-linux-drm"
 
 [dependencies]
 linux-io = "0.9.1"
 linux-unsafe = "0.11.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
