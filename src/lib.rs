@@ -12,6 +12,8 @@ pub mod ioctl;
 pub mod modeset;
 pub mod result;
 
+mod util;
+
 use core::iter::{self, zip};
 use core::ptr::null_mut;
 
@@ -597,8 +599,12 @@ impl Card {
         buf_req.height = req.height;
         buf_req.bpp = req.bpp;
         self.ioctl(ioctl::DRM_IOCTL_MODE_CREATE_DUMB, &mut buf_req)?;
-
-        // FIXME: If we fail after this point then we should free the dumb buffer.
+        let buffer_handle = buf_req.handle;
+        let mut cleanup_db = util::Cleanup::new(|| {
+            let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
+            msg.handle = buffer_handle;
+            let _ = self.ioctl(crate::ioctl::DRM_IOCTL_MODE_DESTROY_DUMB, &mut msg);
+        });
 
         let mut fb_req = ioctl::DrmModeFbCmd::zeroed();
         fb_req.width = buf_req.width;
@@ -608,8 +614,10 @@ impl Card {
         fb_req.pitch = buf_req.pitch;
         fb_req.handle = buf_req.handle;
         self.ioctl(ioctl::DRM_IOCTL_MODE_ADDFB, &mut fb_req)?;
-
-        // FIXME: If we fail after this point then we should free the framebuffer object.
+        let mut fb_id = fb_req.fb_id;
+        let mut cleanup_fb = util::Cleanup::new(|| {
+            let _ = self.ioctl(crate::ioctl::DRM_IOCTL_MODE_RMFB, &mut fb_id);
+        });
 
         let mut map_req = ioctl::DrmModeMapDumb::zeroed();
         map_req.handle = buf_req.handle;
@@ -627,6 +635,8 @@ impl Card {
 
         // The DumbBuffer object's Drop is responsible for freeing
         // the mmap, framebuffer object, and dumb buffer.
+        cleanup_fb.cancel();
+        cleanup_db.cancel();
         Ok(modeset::DumbBuffer {
             width: buf_req.width,
             height: buf_req.height,
