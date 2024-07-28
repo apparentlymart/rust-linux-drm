@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 
 use linux_drm::{
-    modeset::{ModeProp, ObjectId, ObjectPropMeta, PropertyType},
+    modeset::{ModeProp, ObjectId, PropertyType},
     result::Error,
     Card, ClientCap, DeviceCap,
 };
 
 fn main() -> std::io::Result<()> {
-    let card = Card::open(c"/dev/dri/card0").map_err(map_init_err)?;
+    let mut card = Card::open(c"/dev/dri/card0").map_err(map_init_err)?;
 
     {
         let name = card.driver_name().map_err(map_err)?;

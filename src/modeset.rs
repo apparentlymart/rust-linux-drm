@@ -371,7 +371,7 @@ impl<'card> ObjectPropMeta<'card> {
             return Err(crate::Error::NotSupported);
         }
         // Range types should always have exactly two values.
-        if self.raw.count_values != 2 {
+        if self.raw.count_values() != 2 {
             return Err(crate::Error::RemoteFailure);
         }
 
@@ -379,13 +379,12 @@ impl<'card> ObjectPropMeta<'card> {
 
         let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
         tmp.prop_id = self.raw.prop_id;
-        tmp.count_values = 2;
-        tmp.values_ptr = &mut pair as *mut _ as u64;
+        unsafe { tmp.set_values_ptr(&mut pair as *mut u64, 2) };
         self.card
             .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
             .unwrap();
 
-        if tmp.count_values != 2 {
+        if tmp.count_values() != 2 {
             // Something has gone horribly wrong.
             return Err(crate::Error::RemoteFailure);
         }
@@ -407,20 +406,19 @@ impl<'card> ObjectPropMeta<'card> {
     ///     For these it's typically better to use [`Self::enum_members`] since
     ///     that can also return the name associated with each value.
     pub fn values(&self) -> Result<Vec<u64>, crate::Error> {
-        let mut count = self.raw.count_values as usize;
+        let mut count = self.raw.count_values() as usize;
         loop {
             let mut values = crate::vec_with_capacity::<u64>(count)?;
 
             let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
             tmp.prop_id = self.raw.prop_id;
-            tmp.count_values = count as u32;
-            tmp.values_ptr = values.as_mut_ptr() as u64;
+            unsafe { tmp.set_values_ptr(values.as_mut_ptr(), count as u32) };
 
             self.card
                 .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
                 .unwrap();
 
-            let new_count = tmp.count_values as usize;
+            let new_count = tmp.count_values() as usize;
             if new_count != count {
                 count = new_count;
                 continue;
@@ -445,7 +443,7 @@ impl<'card> ObjectPropMeta<'card> {
             return Err(crate::Error::NotSupported);
         }
 
-        let mut count = self.raw.count_enum_blobs as usize;
+        let mut count = self.raw.count_enum_blobs() as usize;
         loop {
             // Safety: The following relies on ObjectPropEnumMember having identical
             // layout to ioctl::DrmModePropertyEnum, which we ensure by marking
@@ -454,14 +452,18 @@ impl<'card> ObjectPropMeta<'card> {
 
             let mut tmp = crate::ioctl::DrmModeGetProperty::zeroed();
             tmp.prop_id = self.raw.prop_id;
-            tmp.count_enum_blobs = count as u32;
-            tmp.enum_blob_ptr = members.as_mut_ptr() as u64;
+            unsafe {
+                tmp.set_enum_blob_ptr(
+                    members.as_mut_ptr() as *mut crate::ioctl::DrmModePropertyEnum,
+                    count as u32,
+                )
+            };
 
             self.card
                 .ioctl(crate::ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)
                 .unwrap();
 
-            let new_count = tmp.count_enum_blobs as usize;
+            let new_count = tmp.count_enum_blobs() as usize;
             if new_count != count {
                 count = new_count;
                 continue;

@@ -1,5 +1,3 @@
-use std::{thread::sleep, time::Duration};
-
 use linux_drm::{
     event::{DrmEvent, GenericDrmEvent},
     modeset::{
@@ -7,7 +5,7 @@ use linux_drm::{
         PageFlipFlags,
     },
     result::Error,
-    Card, ClientCap, DeviceCap,
+    Card, DeviceCap,
 };
 
 fn main() -> std::io::Result<()> {
@@ -31,9 +29,6 @@ fn main() -> std::io::Result<()> {
     } else {
         println!("Device supports 'dumb buffers'");
     }
-
-    //card.set_client_cap(ClientCap::UniversalPlanes, 1)
-    //    .map_err(map_err)?;
 
     display_demo(&mut card).map_err(map_err)
 }

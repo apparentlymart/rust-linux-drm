@@ -1,5 +1,6 @@
 use core::ffi::c_int as int;
 use core::ffi::c_ulong as ulong;
+use core::ptr::null_mut;
 
 use linux_io::fd::ioctl::{
     ioctl_no_arg, ioctl_write, ioctl_writeread, IoDevice, IoctlReqNoArgs, IoctlReqWrite,
@@ -96,15 +97,68 @@ pub struct DrmVersion {
     pub version_major: int,
     pub version_minor: int,
     pub version_patchlevel: int,
-    pub name_len: usize,
-    pub name: *mut i8,
-    pub date_len: usize,
-    pub date: *mut i8,
-    pub desc_len: usize,
-    pub desc: *mut i8,
+    name_len: usize,
+    name: *mut i8,
+    date_len: usize,
+    date: *mut i8,
+    desc_len: usize,
+    desc: *mut i8,
 }
 
 impl_zeroed!(DrmVersion);
+
+impl DrmVersion {
+    #[inline(always)]
+    pub unsafe fn set_name_ptr(&mut self, ptr: *mut i8, len: usize) {
+        self.name = ptr;
+        self.name_len = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_name_ptr(&mut self) {
+        self.name = null_mut();
+        self.name_len = 0;
+    }
+
+    #[inline(always)]
+    pub fn name_len(&self) -> usize {
+        self.name_len
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_date_ptr(&mut self, ptr: *mut i8, len: usize) {
+        self.date = ptr;
+        self.date_len = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_date_ptr(&mut self) {
+        self.date = null_mut();
+        self.date_len = 0;
+    }
+
+    #[inline(always)]
+    pub fn date_len(&self) -> usize {
+        self.date_len
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_desc_ptr(&mut self, ptr: *mut i8, len: usize) {
+        self.desc = ptr;
+        self.desc_len = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_desc_ptr(&mut self) {
+        self.desc = null_mut();
+        self.desc_len = 0;
+    }
+
+    #[inline(always)]
+    pub fn desc_len(&self) -> usize {
+        self.desc_len
+    }
+}
 
 pub const DRM_IOCTL_VERSION: IoctlReqWriteRead<DrmCardDevice, DrmVersion, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmVersion>(0x00)) };
@@ -273,14 +327,14 @@ pub const DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT: DrmClientCap = DrmClientCap(6);
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeCardRes {
-    pub fb_id_ptr: u64,
-    pub crtc_id_ptr: u64,
-    pub connector_id_ptr: u64,
-    pub encoder_id_ptr: u64,
-    pub count_fbs: u32,
-    pub count_crtcs: u32,
-    pub count_connectors: u32,
-    pub count_encoders: u32,
+    fb_id_ptr: u64,
+    crtc_id_ptr: u64,
+    connector_id_ptr: u64,
+    encoder_id_ptr: u64,
+    count_fbs: u32,
+    count_crtcs: u32,
+    count_connectors: u32,
+    count_encoders: u32,
     pub min_width: u32,
     pub max_width: u32,
     pub min_height: u32,
@@ -288,6 +342,76 @@ pub struct DrmModeCardRes {
 }
 
 impl_zeroed!(DrmModeCardRes);
+
+impl DrmModeCardRes {
+    #[inline(always)]
+    pub unsafe fn set_fb_id_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.fb_id_ptr = ptr as u64;
+        self.count_fbs = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_fb_id_ptr(&mut self) {
+        self.fb_id_ptr = 0;
+        self.count_fbs = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_fbs(&mut self) -> u32 {
+        self.count_fbs
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_crtc_id_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.crtc_id_ptr = ptr as u64;
+        self.count_crtcs = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_crtc_id_ptr(&mut self) {
+        self.crtc_id_ptr = 0;
+        self.count_crtcs = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_crtcs(&mut self) -> u32 {
+        self.count_crtcs
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_connector_id_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.connector_id_ptr = ptr as u64;
+        self.count_connectors = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_connector_id_ptr(&mut self) {
+        self.connector_id_ptr = 0;
+        self.count_connectors = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_connectors(&mut self) -> u32 {
+        self.count_connectors
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_encoder_id_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.encoder_id_ptr = ptr as u64;
+        self.count_encoders = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_encoder_id_ptr(&mut self) {
+        self.encoder_id_ptr = 0;
+        self.count_encoders = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_encoders(&mut self) -> u32 {
+        self.count_encoders
+    }
+}
 
 pub const DRM_IOCTL_MODE_GETRESOURCES: IoctlReqWriteRead<DrmCardDevice, DrmModeCardRes, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCardRes>(0xa0)) };
@@ -319,13 +443,13 @@ pub const DRM_MODE_TYPE_DRIVER: u32 = 1 << 6;
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeGetConnector {
-    pub encoders_ptr: u64,
-    pub modes_ptr: u64,
-    pub props_ptr: u64,
-    pub prop_values_ptr: u64,
-    pub count_modes: u32,
-    pub count_props: u32,
-    pub count_encoders: u32,
+    encoders_ptr: u64,
+    modes_ptr: u64,
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_modes: u32,
+    count_props: u32,
+    count_encoders: u32,
     pub encoder_id: u32,
     pub connector_id: u32,
     pub connector_type: u32,
@@ -339,6 +463,61 @@ pub struct DrmModeGetConnector {
 }
 
 impl_zeroed!(DrmModeGetConnector);
+
+impl DrmModeGetConnector {
+    #[inline(always)]
+    pub unsafe fn set_encoders_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.encoders_ptr = ptr as u64;
+        self.count_encoders = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_encoders_ptr(&mut self) {
+        self.encoders_ptr = 0;
+        self.count_encoders = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_encoders(&self) -> u32 {
+        self.count_encoders
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_modes_ptr(&mut self, ptr: *mut DrmModeInfo, len: u32) {
+        self.modes_ptr = ptr as u64;
+        self.count_modes = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_modes_ptr(&mut self) {
+        self.modes_ptr = 0;
+        self.count_modes = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_modes(&self) -> u32 {
+        self.count_modes
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_props_ptrs(&mut self, ids_ptr: *mut u32, vals_ptr: *mut u64, len: u32) {
+        self.props_ptr = ids_ptr as u64;
+        self.prop_values_ptr = vals_ptr as u64;
+        self.count_props = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_props_ptrs(&mut self) {
+        self.props_ptr = 0;
+        self.prop_values_ptr = 0;
+        self.count_props = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_props(&self) -> u32 {
+        self.count_props
+    }
+}
 
 pub const DRM_IOCTL_MODE_GETCONNECTOR: IoctlReqWriteRead<DrmCardDevice, DrmModeGetConnector, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeGetConnector>(0xa7)) };
@@ -361,8 +540,8 @@ pub const DRM_IOCTL_MODE_GETENCODER: IoctlReqWriteRead<DrmCardDevice, DrmModeGet
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeCrtc {
-    pub set_connectors_ptr: u64,
-    pub count_connectors: u32,
+    set_connectors_ptr: u64,
+    count_connectors: u32,
     pub crtc_id: u32,
     pub fb_id: u32,
     pub x: u32,
@@ -373,6 +552,18 @@ pub struct DrmModeCrtc {
 }
 
 impl_zeroed!(DrmModeCrtc);
+
+impl DrmModeCrtc {
+    pub unsafe fn set_set_connectors_ptr(&mut self, ptr: *const u32, len: u32) {
+        self.set_connectors_ptr = ptr as u64;
+        self.count_connectors = len;
+    }
+
+    pub fn clear_set_connectors_ptr(&mut self) {
+        self.set_connectors_ptr = 0;
+        self.count_connectors = 0;
+    }
+}
 
 pub const DRM_IOCTL_MODE_GETCRTC: IoctlReqWriteRead<DrmCardDevice, DrmModeCrtc, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCrtc>(0xa1)) };
@@ -450,11 +641,25 @@ pub struct DrmModeFbDirtyCmd {
     pub fb_id: u32,
     pub flags: u32,
     pub color: u32,
-    pub num_clips: u32,
-    pub clips_ptr: u64,
+    num_clips: u32,
+    clips_ptr: u64,
 }
 
 impl_zeroed!(DrmModeFbDirtyCmd);
+
+impl DrmModeFbDirtyCmd {
+    #[inline(always)]
+    pub unsafe fn set_clips_ptr(&mut self, ptr: *const DrmClipRect, len: u32) {
+        self.clips_ptr = ptr as u64;
+        self.num_clips = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_clips_ptr(&mut self) {
+        self.clips_ptr = 0;
+        self.num_clips = 0;
+    }
+}
 
 ///
 /// Mark a region of a framebuffer as dirty.
@@ -489,6 +694,13 @@ pub const DRM_MODE_FB_DIRTY_ANNOTATE_COPY: u32 = 0x01;
 pub const DRM_MODE_FB_DIRTY_ANNOTATE_FILL: u32 = 0x02;
 pub const DRM_MODE_FB_DIRTY_FLAGS: u32 = 0x03;
 pub const DRM_MODE_FB_DIRTY_MAX_CLIPS: u32 = 256;
+
+pub struct DrmClipRect {
+    pub x1: linux_unsafe::ushort,
+    pub y1: linux_unsafe::ushort,
+    pub x2: linux_unsafe::ushort,
+    pub y2: linux_unsafe::ushort,
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -560,16 +772,45 @@ pub const DRM_MODE_CURSOR_FLAGS: u32 = 0x03;
 #[derive(Debug)]
 pub struct DrmModeAtomic {
     pub flags: u32,
-    pub count_objs: u32,
-    pub objs_ptr: u64,
-    pub count_props_ptr: u64,
-    pub props_ptr: u64,
-    pub prop_values_ptr: u64,
+    count_objs: u32,
+    objs_ptr: u64,
+    count_props_ptr: u64,
+    props_ptr: u64,
+    prop_values_ptr: u64,
     pub reserved: u64,
     pub user_data: u64,
 }
 
+pub struct DrmModeAtomicPtrs {
+    pub objs_ptr: *const u32,
+    pub count_props_ptr: *const u32,
+    pub count_objs: u32,
+
+    pub props_ptr: *const u32,
+    pub prop_values_ptr: *const u64,
+}
+
 impl_zeroed!(DrmModeAtomic);
+
+impl DrmModeAtomic {
+    #[inline(always)]
+    pub unsafe fn set_ptrs(&mut self, ptrs: DrmModeAtomicPtrs) {
+        self.objs_ptr = ptrs.objs_ptr as u64;
+        self.count_props_ptr = ptrs.count_props_ptr as u64;
+        self.count_objs = ptrs.count_objs;
+        self.props_ptr = ptrs.props_ptr as u64;
+        self.prop_values_ptr = ptrs.prop_values_ptr as u64;
+    }
+
+    #[inline(always)]
+    pub unsafe fn clear_ptrs(&mut self) {
+        self.objs_ptr = 0;
+        self.count_props_ptr = 0;
+        self.count_objs = 0;
+        self.props_ptr = 0;
+        self.prop_values_ptr = 0;
+    }
+}
 
 pub const DRM_IOCTL_MODE_ATOMIC: IoctlReqWriteRead<DrmCardDevice, DrmModeAtomic, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeAtomic>(0xbc)) };
@@ -612,14 +853,32 @@ pub const DRM_MODE_ATOMIC_FLAGS: u32 = DRM_MODE_PAGE_FLIP_EVENT
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeObjGetProperties {
-    pub props_ptr: u64,
-    pub prop_values_ptr: u64,
-    pub count_props: u32,
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_props: u32,
     pub obj_id: u32,
     pub obj_type: u32,
 }
 
 impl_zeroed!(DrmModeObjGetProperties);
+
+impl DrmModeObjGetProperties {
+    pub unsafe fn set_prop_ptrs(&mut self, ids_ptr: *mut u32, values_ptr: *mut u64, len: u32) {
+        self.props_ptr = ids_ptr as u64;
+        self.prop_values_ptr = values_ptr as u64;
+        self.count_props = len;
+    }
+
+    pub fn clear_prop_attrs(&mut self) {
+        self.props_ptr = 0;
+        self.prop_values_ptr = 0;
+        self.count_props = 0;
+    }
+
+    pub fn count_props(&self) -> u32 {
+        self.count_props
+    }
+}
 
 pub const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: IoctlReqWriteRead<
     DrmCardDevice,
@@ -657,11 +916,30 @@ pub const DRM_MODE_OBJECT_ANY: u32 = 0;
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeGetPlaneRes {
-    pub plane_id_ptr: u64,
-    pub count_planes: u32,
+    plane_id_ptr: u64,
+    count_planes: u32,
 }
 
 impl_zeroed!(DrmModeGetPlaneRes);
+
+impl DrmModeGetPlaneRes {
+    #[inline(always)]
+    pub unsafe fn set_plane_id_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.plane_id_ptr = ptr as u64;
+        self.count_planes = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_plane_id_ptr(&mut self) {
+        self.plane_id_ptr = 0;
+        self.count_planes = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_planes(&self) -> u32 {
+        self.count_planes
+    }
+}
 
 pub const DRM_IOCTL_MODE_GETPLANERESOURCES: IoctlReqWriteRead<
     DrmCardDevice,
@@ -677,11 +955,30 @@ pub struct DrmModeGetPlane {
     pub fb_id: u32,
     pub possible_crtcs: u32,
     pub gamma_size: u32,
-    pub count_format_types: u32,
-    pub format_type_ptr: u32,
+    count_format_types: u32,
+    format_type_ptr: u64,
 }
 
 impl_zeroed!(DrmModeGetPlane);
+
+impl DrmModeGetPlane {
+    #[inline(always)]
+    pub unsafe fn set_format_type_ptr(&mut self, ptr: *mut u32, len: u32) {
+        self.format_type_ptr = ptr as u64;
+        self.count_format_types = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_format_type_ptr(&mut self) {
+        self.format_type_ptr = 0;
+        self.count_format_types = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_format_types(&self) -> u32 {
+        self.count_format_types
+    }
+}
 
 pub const DRM_IOCTL_MODE_GETPLANE: IoctlReqWriteRead<DrmCardDevice, DrmModeGetPlane, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeGetPlane>(0xb6)) };
@@ -716,16 +1013,66 @@ pub const DRM_MODE_PRESENT_BOTTOM_FIELD: u32 = 1 << 1;
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct DrmModeGetProperty {
-    pub values_ptr: u64,
-    pub enum_blob_ptr: u64,
+    values_ptr: u64,
+    enum_blob_ptr: u64,
     pub prop_id: u32,
     pub flags: u32,
     pub name: [u8; DRM_PROP_NAME_LEN],
-    pub count_values: u32,
-    pub count_enum_blobs: u32,
+    count_values: u32,
+    count_enum_blobs: u32,
 }
 
 impl_zeroed!(DrmModeGetProperty);
+
+impl DrmModeGetProperty {
+    /// Set the `values_ptr` and `count_values` fields.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to an array of `u64` with at least length `len`, and
+    /// that pointer must remain valid throughout any subsequent ioctl calls
+    /// using this object.
+    #[inline(always)]
+    pub unsafe fn set_values_ptr(&mut self, ptr: *mut u64, len: u32) {
+        self.values_ptr = ptr as u64;
+        self.count_values = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_values_ptr(&mut self) {
+        self.values_ptr = 0;
+        self.count_values = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_values(&self) -> u32 {
+        self.count_values
+    }
+
+    /// Set the `values_ptr` and `count_values` fields.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to an array of `DrmModePropertyEnum` with at least
+    /// length `len`, and that pointer must remain valid throughout any
+    /// subsequent ioctl calls using this object.
+    #[inline(always)]
+    pub unsafe fn set_enum_blob_ptr(&mut self, ptr: *mut DrmModePropertyEnum, len: u32) {
+        self.enum_blob_ptr = ptr as u64;
+        self.count_enum_blobs = len;
+    }
+
+    #[inline(always)]
+    pub fn clear_enum_blob_ptr(&mut self) {
+        self.enum_blob_ptr = 0;
+        self.count_enum_blobs = 0;
+    }
+
+    #[inline(always)]
+    pub fn count_enum_blobs(&self) -> u32 {
+        self.count_enum_blobs
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -791,12 +1138,31 @@ pub const fn DRM_MODE_PROP_TYPE(n: u32) -> u32 {
 #[repr(C)]
 #[derive(Debug)]
 pub struct DrmModeCreateBlob {
-    pub data: u64,
-    pub length: u32,
+    data: u64,
+    length: u32,
     pub blob_id: u32,
 }
 
 impl_zeroed!(DrmModeCreateBlob);
+
+impl DrmModeCreateBlob {
+    /// Set the `data` and `length` fields.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to the start of an array of bytes of length `len`,
+    /// and that pointer must remain valid throughout any subsequent ioctl
+    /// calls using this object.
+    pub unsafe fn set_data(&mut self, ptr: *const u8, len: u32) {
+        self.data = ptr as u64;
+        self.length = len;
+    }
+
+    pub fn clear_data(&mut self) {
+        self.data = 0;
+        self.length = 0;
+    }
+}
 
 pub const DRM_IOCTL_MODE_CREATEPROPBLOB: IoctlReqWriteRead<DrmCardDevice, DrmModeCreateBlob, int> =
     unsafe { ioctl_writeread(_IOWR::<DrmModeCreateBlob>(0xbd)) };

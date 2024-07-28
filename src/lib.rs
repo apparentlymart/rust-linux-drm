@@ -7,13 +7,6 @@ extern crate alloc;
 /// Types and other symbols used for event handling.
 pub mod event;
 /// Low-level `ioctl`-based access to DRM devices.
-///
-/// The struct types in this module are likely to change in breaking ways
-/// in a future release because they currently behave as a memory safety
-/// hole by allowing safe Rust to ask the kernel to write to arbitrary
-/// memory addresses. Prefer to use the [`Card`] abstraction to avoid being
-/// impacted by those changes. (Even that is subject to change until
-/// a v1.0 release, but is less likely to be _totally_ reworked.)
 pub mod ioctl;
 /// Types and other symbols used for modesetting.
 pub mod modeset;
@@ -83,22 +76,20 @@ impl Card {
     pub fn read_driver_name<'a>(&self, into: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         let ptr = into.as_mut_ptr();
-        v.name_len = into.len();
-        v.name = ptr as *mut _;
+        unsafe { v.set_name_ptr(ptr as *mut _, into.len()) };
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
-        Ok(&mut into[..v.name_len])
+        Ok(&mut into[..v.name_len()])
     }
 
     pub fn driver_name(&self) -> Result<Vec<u8>, Error> {
         let mut v = ioctl::DrmVersion::zeroed();
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
-        let len = v.name_len;
-        let mut ret = vec_with_capacity(len)?;
+        let len = v.name_len();
+        let mut ret = vec_with_capacity::<u8>(len)?;
         v = ioctl::DrmVersion::zeroed();
-        v.name_len = len;
-        v.name = ret.as_mut_ptr() as *mut _;
+        unsafe { v.set_name_ptr(ret.as_mut_ptr() as *mut _, len) };
         self.ioctl(ioctl::DRM_IOCTL_VERSION, &mut v)?;
-        unsafe { ret.set_len(v.name_len) };
+        unsafe { ret.set_len(v.name_len()) };
         Ok(ret)
     }
 
@@ -118,13 +109,13 @@ impl Card {
     }
 
     #[inline(always)]
-    pub fn set_client_cap(&self, capability: ClientCap, value: u64) -> Result<(), Error> {
+    pub fn set_client_cap(&mut self, capability: ClientCap, value: u64) -> Result<(), Error> {
         self.set_client_cap_raw(capability.into(), value)
     }
 
     #[inline]
     pub fn set_client_cap_raw(
-        &self,
+        &mut self,
         capability: ioctl::DrmClientCap,
         value: u64,
     ) -> Result<(), Error> {
@@ -177,17 +168,22 @@ impl Card {
             // while we're producing this result, and so we need to keep retrying
             // until we get a consistent result.
             loop {
-                let prop_count = tmp.count_props as usize;
+                let prop_count = tmp.count_props() as usize;
 
                 let mut prop_ids = vec_with_capacity::<u32>(prop_count)?;
                 let mut prop_values = vec_with_capacity::<u64>(prop_count)?;
 
-                tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
-                tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+                unsafe {
+                    tmp.set_prop_ptrs(
+                        prop_ids.as_mut_ptr(),
+                        prop_values.as_mut_ptr(),
+                        prop_count as u32,
+                    )
+                };
 
                 card.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
 
-                let new_prop_count = tmp.count_props as usize;
+                let new_prop_count = tmp.count_props() as usize;
                 if new_prop_count != prop_count {
                     // The number of properties has changed since the previous
                     // request, so we'll retry.
@@ -229,19 +225,24 @@ impl Card {
         tmp.obj_type = type_id;
         tmp.obj_id = raw_id;
         self.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
-        if tmp.count_props == 0 {
+        if tmp.count_props() == 0 {
             return Ok(());
         }
 
         let (prop_ids, prop_values) = loop {
-            let prop_count = tmp.count_props as usize;
+            let prop_count = tmp.count_props() as usize;
             let mut prop_ids = vec_with_capacity::<u32>(prop_count)?;
             let mut prop_values = vec_with_capacity::<u64>(prop_count)?;
-            tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
-            tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+            unsafe {
+                tmp.set_prop_ptrs(
+                    prop_ids.as_mut_ptr(),
+                    prop_values.as_mut_ptr(),
+                    prop_count as u32,
+                )
+            };
             self.ioctl(ioctl::DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut tmp)?;
 
-            let new_prop_count = tmp.count_props as usize;
+            let new_prop_count = tmp.count_props() as usize;
             if new_prop_count != prop_count {
                 // The number of properties has changed since the previous
                 // request, so we'll retry.
@@ -282,10 +283,10 @@ impl Card {
         let mut ret = loop {
             let mut r = ioctl::DrmModeCardRes::zeroed();
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
-            let fb_count = r.count_fbs as usize;
-            let connector_count = r.count_connectors as usize;
-            let crtc_count = r.count_crtcs as usize;
-            let encoder_count = r.count_encoders as usize;
+            let fb_count = r.count_fbs() as usize;
+            let connector_count = r.count_connectors() as usize;
+            let crtc_count = r.count_crtcs() as usize;
+            let encoder_count = r.count_encoders() as usize;
 
             let mut fb_ids = vec_with_capacity::<u32>(fb_count)?;
             let mut connector_ids = vec_with_capacity::<u32>(connector_count)?;
@@ -293,29 +294,27 @@ impl Card {
             let mut encoder_ids = vec_with_capacity::<u32>(encoder_count)?;
 
             r = ioctl::DrmModeCardRes::zeroed();
-            r.count_fbs = fb_count as u32;
-            r.fb_id_ptr = fb_ids.as_mut_ptr() as u64;
-            r.count_connectors = connector_count as u32;
-            r.connector_id_ptr = connector_ids.as_mut_ptr() as u64;
-            r.count_crtcs = crtc_count as u32;
-            r.crtc_id_ptr = crtc_ids.as_mut_ptr() as u64;
-            r.count_encoders = encoder_count as u32;
-            r.encoder_id_ptr = encoder_ids.as_mut_ptr() as u64;
+            unsafe {
+                r.set_fb_id_ptr(fb_ids.as_mut_ptr(), fb_count as u32);
+                r.set_connector_id_ptr(connector_ids.as_mut_ptr(), connector_count as u32);
+                r.set_crtc_id_ptr(crtc_ids.as_mut_ptr(), crtc_count as u32);
+                r.set_encoder_id_ptr(encoder_ids.as_mut_ptr(), encoder_count as u32);
+            };
 
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
             // If any of the counts changed since our original call then the kernel
             // would not have populated the arrays and we'll need to retry and
             // hope that we don't collide with hotplugging next time.
-            if r.count_fbs as usize != fb_count {
+            if r.count_fbs() as usize != fb_count {
                 continue;
             }
-            if r.count_connectors as usize != connector_count {
+            if r.count_connectors() as usize != connector_count {
                 continue;
             }
-            if r.count_crtcs as usize != crtc_count {
+            if r.count_crtcs() as usize != crtc_count {
                 continue;
             }
-            if r.count_encoders as usize != encoder_count {
+            if r.count_encoders() as usize != encoder_count {
                 continue;
             }
 
@@ -347,12 +346,12 @@ impl Card {
             let mut tmp = ioctl::DrmModeGetPlaneRes::zeroed();
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
 
-            let plane_count = tmp.count_planes as usize;
+            let plane_count = tmp.count_planes() as usize;
             let mut plane_ids = vec_with_capacity::<u32>(plane_count)?;
-            tmp.plane_id_ptr = plane_ids.as_mut_ptr() as u64;
+            unsafe { tmp.set_plane_id_ptr(plane_ids.as_mut_ptr(), plane_count as u32) };
 
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
-            if tmp.count_planes as usize != plane_count {
+            if tmp.count_planes() as usize != plane_count {
                 // Need to try again, then.
                 continue;
             }
@@ -375,9 +374,9 @@ impl Card {
             tmp.connector_id = connector_id;
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETCONNECTOR, &mut tmp)?;
 
-            let mode_count = tmp.count_modes;
-            let encoder_count = tmp.count_encoders;
-            let prop_count = tmp.count_props;
+            let mode_count = tmp.count_modes();
+            let encoder_count = tmp.count_encoders();
+            let prop_count = tmp.count_props();
 
             let mut modes = vec_with_capacity::<ioctl::DrmModeInfo>(mode_count as usize)?;
             let mut ret_modes = vec_with_capacity::<ModeInfo>(mode_count as usize)?;
@@ -388,18 +387,16 @@ impl Card {
 
             tmp = ioctl::DrmModeGetConnector::zeroed();
             tmp.connector_id = connector_id;
-            tmp.count_modes = mode_count;
-            tmp.modes_ptr = modes.as_mut_ptr() as u64;
-            tmp.count_encoders = encoder_count;
-            tmp.encoders_ptr = encoder_ids.as_mut_ptr() as u64;
-            tmp.count_props = prop_count;
-            tmp.props_ptr = prop_ids.as_mut_ptr() as u64;
-            tmp.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+            unsafe {
+                tmp.set_modes_ptr(modes.as_mut_ptr(), mode_count);
+                tmp.set_encoders_ptr(encoder_ids.as_mut_ptr(), encoder_count);
+                tmp.set_props_ptrs(prop_ids.as_mut_ptr(), prop_values.as_mut_ptr(), prop_count);
+            };
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETCONNECTOR, &mut tmp)?;
 
-            if tmp.count_modes != mode_count
-                || tmp.count_props != prop_count
-                || tmp.count_encoders != encoder_count
+            if tmp.count_modes() != mode_count
+                || tmp.count_props() != prop_count
+                || tmp.count_encoders() != encoder_count
             {
                 // Seems like things have changed since our first call, so we need to start over.
                 continue;
@@ -480,11 +477,15 @@ impl Card {
     ) -> Result<(), Error> {
         let mut tmp = ioctl::DrmModeAtomic::zeroed();
         let mut raw_parts = req.for_ioctl_req();
-        tmp.count_objs = raw_parts.obj_ids.len() as u32;
-        tmp.objs_ptr = raw_parts.obj_ids.as_mut_ptr() as u64;
-        tmp.count_props_ptr = raw_parts.obj_prop_counts.as_mut_ptr() as u64;
-        tmp.props_ptr = raw_parts.prop_ids.as_mut_ptr() as u64;
-        tmp.prop_values_ptr = raw_parts.prop_values.as_mut_ptr() as u64;
+        unsafe {
+            tmp.set_ptrs(ioctl::DrmModeAtomicPtrs {
+                count_objs: raw_parts.obj_ids.len() as u32,
+                objs_ptr: raw_parts.obj_ids.as_mut_ptr(),
+                count_props_ptr: raw_parts.obj_prop_counts.as_mut_ptr(),
+                props_ptr: raw_parts.prop_ids.as_mut_ptr(),
+                prop_values_ptr: raw_parts.prop_values.as_mut_ptr(),
+            })
+        };
         tmp.flags = flags.0;
         tmp.user_data = user_data;
 
@@ -511,8 +512,7 @@ impl Card {
         if conn_ids.len() > (u32::MAX as usize) {
             return Err(Error::Invalid);
         }
-        tmp.count_connectors = conn_ids.len() as u32;
-        tmp.set_connectors_ptr = conn_ids.as_ptr() as u64;
+        unsafe { tmp.set_set_connectors_ptr(conn_ids.as_ptr(), conn_ids.len() as u32) };
         tmp.fb_id = buf.fb_id;
         tmp.mode = mode.into();
         tmp.mode_valid = 1;
