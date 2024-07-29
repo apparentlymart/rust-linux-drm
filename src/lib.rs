@@ -38,8 +38,8 @@ impl Card {
     ///
     /// Returns [`result::InitError::NotDrmCard`] if the opened file
     /// does not support the `DRM_IOCTL_VERSION` ioctl request.
-    pub fn open(path: &core::ffi::CStr) -> Result<Self, InitError> {
-        let f = linux_io::File::open(path, linux_io::OpenOptions::read_write())?;
+    pub fn open(path: impl AsRef<core::ffi::CStr>) -> Result<Self, InitError> {
+        let f = linux_io::File::open(path.as_ref(), linux_io::OpenOptions::read_write())?;
         Self::from_file(f)
     }
 

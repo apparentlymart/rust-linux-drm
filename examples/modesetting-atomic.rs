@@ -7,9 +7,15 @@ use linux_drm::{
     result::Error,
     Card, ClientCap, DeviceCap,
 };
+use std::{
+    borrow::Cow,
+    env,
+    ffi::{CStr, CString},
+};
 
 fn main() -> std::io::Result<()> {
-    let mut card = Card::open(c"/dev/dri/card0").map_err(map_init_err)?;
+    let card_path = card_path();
+    let mut card = Card::open(card_path).map_err(map_init_err)?;
     card.become_master().map_err(map_err)?;
 
     {
@@ -35,6 +41,20 @@ fn main() -> std::io::Result<()> {
     card.set_client_cap(ClientCap::Atomic, 1).map_err(map_err)?;
 
     display_demo(&mut card).map_err(map_err)
+}
+
+fn card_path<'a>() -> Cow<'a, CStr> {
+    static DEFAULT_PATH: &'static CStr = c"/dev/dri/card0";
+
+    let mut args = env::args();
+    if !args.next().is_some() {
+        // skip the executable name
+        return Cow::Borrowed(DEFAULT_PATH);
+    }
+
+    args.next().map_or(Cow::Borrowed(DEFAULT_PATH), |s| {
+        Cow::Owned(CString::new(s).unwrap())
+    })
 }
 
 fn display_demo(card: &mut Card) -> Result<(), Error> {

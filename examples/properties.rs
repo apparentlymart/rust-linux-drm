@@ -1,4 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    env,
+    ffi::{CStr, CString},
+};
 
 use linux_drm::{
     modeset::{ModeProp, ObjectId, PropertyId, PropertyType},
@@ -7,7 +12,8 @@ use linux_drm::{
 };
 
 fn main() -> std::io::Result<()> {
-    let mut card = Card::open(c"/dev/dri/card0").map_err(map_init_err)?;
+    let card_path = card_path();
+    let mut card = Card::open(card_path).map_err(map_init_err)?;
 
     {
         let name = card.driver_name().map_err(map_err)?;
@@ -30,6 +36,20 @@ fn main() -> std::io::Result<()> {
     card.set_client_cap(ClientCap::Atomic, 1).map_err(map_err)?;
 
     show_properties(&card).map_err(map_err)
+}
+
+fn card_path<'a>() -> Cow<'a, CStr> {
+    static DEFAULT_PATH: &'static CStr = c"/dev/dri/card0";
+
+    let mut args = env::args();
+    if !args.next().is_some() {
+        // skip the executable name
+        return Cow::Borrowed(DEFAULT_PATH);
+    }
+
+    args.next().map_or(Cow::Borrowed(DEFAULT_PATH), |s| {
+        Cow::Owned(CString::new(s).unwrap())
+    })
 }
 
 fn show_properties(card: &Card) -> Result<(), Error> {
