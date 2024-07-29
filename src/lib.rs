@@ -21,7 +21,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
 use modeset::{
-    BufferObjectId, ConnectorId, CrtcId, EncoderId, EncoderState, FramebufferId, ModeInfo,
+    BlobId, BufferObjectId, ConnectorId, CrtcId, EncoderId, EncoderState, FramebufferId, ModeInfo,
     ModeProp, PlaneId,
 };
 use result::{Error, InitError};
@@ -574,7 +574,7 @@ impl Card {
         unsafe { tmp.set_data(content.as_ptr(), content.len() as u32) };
         self.ioctl(ioctl::DRM_IOCTL_MODE_CREATEPROPBLOB, &mut tmp)?;
         Ok(modeset::BlobHandle {
-            id: Some(tmp.blob_id),
+            id: Some(BlobId(tmp.blob_id)),
             f: Arc::downgrade(&self.f),
         })
     }

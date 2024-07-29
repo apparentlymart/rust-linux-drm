@@ -327,13 +327,13 @@ pub struct BlobId(pub u32);
 /// The [`Drop`] implementation for this type destroys the
 #[derive(Debug)]
 pub struct BlobHandle {
-    pub(crate) id: Option<u32>,
+    pub(crate) id: Option<BlobId>,
     pub(crate) f: Weak<linux_io::File<DrmCardDevice>>,
 }
 
 impl<'card> BlobHandle {
     #[inline(always)]
-    pub const fn id(&self) -> u32 {
+    pub const fn id(&self) -> BlobId {
         let Some(ret) = self.id else {
             unreachable!();
         };
@@ -350,7 +350,7 @@ impl<'card> BlobHandle {
     fn destroy_internal(&mut self) -> Result<(), crate::result::Error> {
         if let Some(f) = self.f.upgrade() {
             if let Some(blob_id) = self.id.take() {
-                let mut tmp = crate::ioctl::DrmModeDestroyBlob { blob_id };
+                let mut tmp = crate::ioctl::DrmModeDestroyBlob { blob_id: blob_id.0 };
                 crate::drm_ioctl(&f, crate::ioctl::DRM_IOCTL_MODE_DESTROYPROPBLOB, &mut tmp)?;
             }
         }
@@ -367,12 +367,12 @@ impl Drop for BlobHandle {
 
 impl AsRawPropertyValue for BlobHandle {
     fn as_raw_property_value(&self) -> u64 {
-        self.id() as u64
+        self.id().0 as u64
     }
 }
 
 impl IntoRawPropertyValue for BlobHandle {
     fn into_raw_property_value(self) -> (u64, Option<Box<dyn core::any::Any>>) {
-        (self.id() as u64, Some(Box::new(self)))
+        (self.id().0 as u64, Some(Box::new(self)))
     }
 }
