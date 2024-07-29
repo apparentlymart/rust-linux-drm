@@ -233,11 +233,29 @@ impl ObjectPropEnumMember {
     }
 }
 
+/// Trait implemented by types that can be borrowed as raw property values.
+///
+/// For types that represent references to other objects already known by
+/// the kernel, such as property blobs, the caller must keep the original
+/// object live for as long as the result is being used in requests to the
+/// kernel.
 pub trait AsRawPropertyValue {
     fn as_raw_property_value(&self) -> u64;
 }
 
+/// Trait implemented by types that can be converted into raw property values
+/// while transferring ownership.
+///
+/// This is an extension of [`AsRawPropertyValue`] for situations where the
+/// recipient is taking ownership of the implementing object, so that the
+/// object can be kept live long enough to use its raw representation.
 pub trait IntoRawPropertyValue: AsRawPropertyValue {
+    /// Return the raw `u64` representation to send to the kernel along with
+    /// an optional object that needs to be kept live in order for that
+    /// raw result to remain valid.
+    ///
+    /// The first result should typically be the same as would be returned
+    /// from [`AsRawPropertyValue::as_raw_property_value`].
     fn into_raw_property_value(self) -> (u64, Option<Box<dyn core::any::Any>>);
 }
 

@@ -72,52 +72,52 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
         req.set_property(
             ObjectId::Connector(output.conn_id),
             output.conn_prop_ids.crtc_id,
-            output.crtc_id as u64,
+            output.crtc_id,
         );
         req.set_property(
             ObjectId::Crtc(output.crtc_id),
             output.crtc_prop_ids.active,
-            1_u64,
+            true,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.fb_id,
-            output.db.framebuffer_id() as u64,
+            output.db.framebuffer_id(),
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.crtc_id,
-            output.crtc_id as u64,
+            output.crtc_id,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.crtc_x,
-            0_u64,
+            0,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.crtc_y,
-            0_u64,
+            0,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.crtc_w,
-            output.db.width() as u64,
+            output.db.width(),
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.crtc_h,
-            output.db.height() as u64,
+            output.db.height(),
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.src_x,
-            0_u64,
+            0,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
             output.plane_prop_ids.src_y,
-            0_u64,
+            0,
         );
         req.set_property(
             ObjectId::Plane(output.plane_id),
