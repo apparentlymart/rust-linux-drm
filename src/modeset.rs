@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::{BitAnd, BitOr};
 
@@ -9,29 +10,50 @@ pub use atomic::*;
 pub use buffer::*;
 pub use props::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct FramebufferId(pub u32);
+macro_rules! id_newtype {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[repr(transparent)]
+        pub struct $name(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct CrtcId(pub u32);
+        impl $name {
+            /// Returns the raw `u32` value of the id.
+            #[inline(always)]
+            pub const fn to_raw(self) -> u32 {
+                self.0
+            }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct ConnectorId(pub u32);
+            /// Returns true if the id is zero, representing the absense of an object.
+            #[inline(always)]
+            pub const fn is_null(self) -> bool {
+                self.0 == 0
+            }
+        }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct EncoderId(pub u32);
+        impl props::AsRawPropertyValue for $name {
+            #[inline(always)]
+            fn as_raw_property_value(&self) -> u64 {
+                self.0 as u64
+            }
+        }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct PlaneId(pub u32);
+        impl props::IntoRawPropertyValue for $name {
+            #[inline(always)]
+            fn into_raw_property_value(self) -> (u64, Option<Box<dyn core::any::Any>>) {
+                (self.0 as u64, None)
+            }
+        }
+    };
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct BufferObjectId(pub u32);
+id_newtype!(FramebufferId);
+id_newtype!(CrtcId);
+id_newtype!(ConnectorId);
+id_newtype!(EncoderId);
+id_newtype!(PlaneId);
+id_newtype!(BufferObjectId);
+id_newtype!(PropertyId);
+id_newtype!(BlobId);
 
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
