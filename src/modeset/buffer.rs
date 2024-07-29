@@ -1,6 +1,8 @@
 use alloc::sync::Weak;
 use core::slice;
 
+use super::{BufferObjectId, FramebufferId};
+
 #[derive(Debug)]
 pub struct DumbBufferRequest {
     pub width: u32,
@@ -18,8 +20,8 @@ pub struct DumbBuffer {
     pub(crate) height: u32,
     pub(crate) bpp: u32,
     pub(crate) pitch: u32,
-    pub(crate) fb_id: u32,
-    pub(crate) buffer_handle: u32,
+    pub(crate) fb_id: FramebufferId,
+    pub(crate) buffer_handle: BufferObjectId,
 }
 
 impl DumbBuffer {
@@ -47,7 +49,7 @@ impl DumbBuffer {
         self.bpp
     }
 
-    pub fn framebuffer_id(&self) -> u32 {
+    pub fn framebuffer_id(&self) -> FramebufferId {
         self.fb_id
     }
 
@@ -74,12 +76,12 @@ impl Drop for DumbBuffer {
             return;
         };
         {
-            let mut fb_id = self.fb_id;
+            let mut fb_id = self.fb_id.0;
             let _ = crate::drm_ioctl(f.as_ref(), crate::ioctl::DRM_IOCTL_MODE_RMFB, &mut fb_id);
         }
         {
             let mut msg = crate::ioctl::DrmModeDestroyDumb::zeroed();
-            msg.handle = self.buffer_handle;
+            msg.handle = self.buffer_handle.0;
             let _ = crate::drm_ioctl(
                 f.as_ref(),
                 crate::ioctl::DRM_IOCTL_MODE_DESTROY_DUMB,

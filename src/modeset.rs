@@ -9,13 +9,108 @@ pub use atomic::*;
 pub use buffer::*;
 pub use props::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct FramebufferId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct CrtcId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct ConnectorId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct EncoderId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct PlaneId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct BufferObjectId(pub u32);
+
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub enum ObjectId {
+    Crtc(CrtcId),
+    Connector(ConnectorId),
+    Encoder(EncoderId),
+    Mode(u32),
+    Property(PropertyId),
+    Framebuffer(FramebufferId),
+    Blob(BlobId),
+    Plane(PlaneId),
+}
+
+impl ObjectId {
+    pub fn as_raw_type_and_id(self) -> (u32, u32) {
+        use crate::ioctl;
+        match self {
+            ObjectId::Crtc(id) => (ioctl::DRM_MODE_OBJECT_CRTC, id.0),
+            ObjectId::Connector(id) => (ioctl::DRM_MODE_OBJECT_CONNECTOR, id.0),
+            ObjectId::Encoder(id) => (ioctl::DRM_MODE_OBJECT_ENCODER, id.0),
+            ObjectId::Mode(id) => (ioctl::DRM_MODE_OBJECT_MODE, id),
+            ObjectId::Property(id) => (ioctl::DRM_MODE_OBJECT_PROPERTY, id.0),
+            ObjectId::Framebuffer(id) => (ioctl::DRM_MODE_OBJECT_FB, id.0),
+            ObjectId::Blob(id) => (ioctl::DRM_MODE_OBJECT_BLOB, id.0),
+            ObjectId::Plane(id) => (ioctl::DRM_MODE_OBJECT_PLANE, id.0),
+        }
+    }
+}
+
+impl From<CrtcId> for ObjectId {
+    fn from(value: CrtcId) -> Self {
+        Self::Crtc(value)
+    }
+}
+
+impl From<ConnectorId> for ObjectId {
+    fn from(value: ConnectorId) -> Self {
+        Self::Connector(value)
+    }
+}
+
+impl From<EncoderId> for ObjectId {
+    fn from(value: EncoderId) -> Self {
+        Self::Encoder(value)
+    }
+}
+
+impl From<PropertyId> for ObjectId {
+    fn from(value: PropertyId) -> Self {
+        Self::Property(value)
+    }
+}
+
+impl From<FramebufferId> for ObjectId {
+    fn from(value: FramebufferId) -> Self {
+        Self::Framebuffer(value)
+    }
+}
+
+impl From<BlobId> for ObjectId {
+    fn from(value: BlobId) -> Self {
+        Self::Blob(value)
+    }
+}
+
+impl From<PlaneId> for ObjectId {
+    fn from(value: PlaneId) -> Self {
+        Self::Plane(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct CardResources {
-    pub fb_ids: Vec<u32>,
-    pub crtc_ids: Vec<u32>,
-    pub connector_ids: Vec<u32>,
-    pub encoder_ids: Vec<u32>,
-    pub plane_ids: Vec<u32>,
+    pub fb_ids: Vec<FramebufferId>,
+    pub crtc_ids: Vec<CrtcId>,
+    pub connector_ids: Vec<ConnectorId>,
+    pub encoder_ids: Vec<EncoderId>,
+    pub plane_ids: Vec<PlaneId>,
     pub min_width: u32,
     pub max_width: u32,
     pub min_height: u32,
@@ -24,8 +119,8 @@ pub struct CardResources {
 
 #[derive(Debug)]
 pub struct ConnectorState {
-    pub id: u32,
-    pub current_encoder_id: u32,
+    pub id: ConnectorId,
+    pub current_encoder_id: EncoderId,
     pub connector_type: ConnectorType,
     pub connector_type_id: u32,
     pub connection_state: ConnectionState,
@@ -108,17 +203,17 @@ impl From<u32> for ConnectorType {
 
 #[derive(Debug)]
 pub struct EncoderState {
-    pub encoder_id: u32,
+    pub encoder_id: EncoderId,
     pub encoder_type: u32,
-    pub current_crtc_id: u32,
+    pub current_crtc_id: CrtcId,
     pub possible_crtcs: u32,
     pub possible_clones: u32,
 }
 
 #[derive(Debug)]
 pub struct CrtcState {
-    pub crtc_id: u32,
-    pub fb_id: u32,
+    pub crtc_id: CrtcId,
+    pub fb_id: FramebufferId,
     pub x: u32,
     pub y: u32,
     pub gamma_size: u32,
@@ -129,8 +224,8 @@ pub struct CrtcState {
 impl From<crate::ioctl::DrmModeCrtc> for CrtcState {
     fn from(value: crate::ioctl::DrmModeCrtc) -> Self {
         Self {
-            crtc_id: value.crtc_id,
-            fb_id: value.fb_id,
+            crtc_id: CrtcId(value.crtc_id),
+            fb_id: FramebufferId(value.fb_id),
             x: value.x,
             y: value.y,
             gamma_size: value.gamma_size,
@@ -142,9 +237,9 @@ impl From<crate::ioctl::DrmModeCrtc> for CrtcState {
 
 #[derive(Debug)]
 pub struct PlaneState {
-    pub id: u32,
-    pub crtc_id: u32,
-    pub fb_id: u32,
+    pub id: PlaneId,
+    pub crtc_id: CrtcId,
+    pub fb_id: FramebufferId,
     pub possible_crtcs: u32,
     pub gamma_size: u32,
 }
@@ -274,34 +369,5 @@ impl From<PageFlipFlags> for u32 {
     #[inline(always)]
     fn from(value: PageFlipFlags) -> Self {
         value.0
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
-pub enum ObjectId {
-    Crtc(u32),
-    Connector(u32),
-    Encoder(u32),
-    Mode(u32),
-    Property(u32),
-    Framebuffer(u32),
-    Blob(u32),
-    Plane(u32),
-}
-
-impl ObjectId {
-    pub fn as_raw_type_and_id(self) -> (u32, u32) {
-        use crate::ioctl;
-        match self {
-            ObjectId::Crtc(id) => (ioctl::DRM_MODE_OBJECT_CRTC, id),
-            ObjectId::Connector(id) => (ioctl::DRM_MODE_OBJECT_CONNECTOR, id),
-            ObjectId::Encoder(id) => (ioctl::DRM_MODE_OBJECT_ENCODER, id),
-            ObjectId::Mode(id) => (ioctl::DRM_MODE_OBJECT_MODE, id),
-            ObjectId::Property(id) => (ioctl::DRM_MODE_OBJECT_PROPERTY, id),
-            ObjectId::Framebuffer(id) => (ioctl::DRM_MODE_OBJECT_FB, id),
-            ObjectId::Blob(id) => (ioctl::DRM_MODE_OBJECT_BLOB, id),
-            ObjectId::Plane(id) => (ioctl::DRM_MODE_OBJECT_PLANE, id),
-        }
     }
 }

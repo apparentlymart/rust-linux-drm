@@ -20,7 +20,10 @@ use core::ptr::null_mut;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use linux_io::fd::ioctl::IoctlReq;
-use modeset::{EncoderState, ModeInfo, ModeProp};
+use modeset::{
+    BufferObjectId, ConnectorId, CrtcId, EncoderId, EncoderState, FramebufferId, ModeInfo,
+    ModeProp, PlaneId,
+};
 use result::{Error, InitError};
 
 #[repr(transparent)]
@@ -164,9 +167,12 @@ impl Card {
     /// Get metadata about a DRM property using its id.
     ///
     /// Property ids are assigned dynamically and so must be detected at runtime.
-    pub fn property_meta(&self, prop_id: u32) -> Result<modeset::ObjectPropMeta, Error> {
+    pub fn property_meta(
+        &self,
+        prop_id: modeset::PropertyId,
+    ) -> Result<modeset::ObjectPropMeta, Error> {
         let mut tmp = ioctl::DrmModeGetProperty::zeroed();
-        tmp.prop_id = prop_id;
+        tmp.prop_id = prop_id.0;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
         if !tmp.name.is_ascii() {
             // ObjectPropMeta assumes that the name is always ASCII so
@@ -231,7 +237,7 @@ impl Card {
                 };
                 return Ok(iter::zip(prop_ids.into_iter(), prop_values.into_iter())
                     .map(|(id, val)| modeset::ModeProp {
-                        prop_id: id,
+                        prop_id: modeset::PropertyId(id),
                         value: val,
                     })
                     .collect());
@@ -324,17 +330,20 @@ impl Card {
             let crtc_count = r.count_crtcs() as usize;
             let encoder_count = r.count_encoders() as usize;
 
-            let mut fb_ids = vec_with_capacity::<u32>(fb_count)?;
-            let mut connector_ids = vec_with_capacity::<u32>(connector_count)?;
-            let mut crtc_ids = vec_with_capacity::<u32>(crtc_count)?;
-            let mut encoder_ids = vec_with_capacity::<u32>(encoder_count)?;
+            let mut fb_ids = vec_with_capacity::<FramebufferId>(fb_count)?;
+            let mut connector_ids = vec_with_capacity::<ConnectorId>(connector_count)?;
+            let mut crtc_ids = vec_with_capacity::<CrtcId>(crtc_count)?;
+            let mut encoder_ids = vec_with_capacity::<EncoderId>(encoder_count)?;
 
             r = ioctl::DrmModeCardRes::zeroed();
             unsafe {
-                r.set_fb_id_ptr(fb_ids.as_mut_ptr(), fb_count as u32);
-                r.set_connector_id_ptr(connector_ids.as_mut_ptr(), connector_count as u32);
-                r.set_crtc_id_ptr(crtc_ids.as_mut_ptr(), crtc_count as u32);
-                r.set_encoder_id_ptr(encoder_ids.as_mut_ptr(), encoder_count as u32);
+                r.set_fb_id_ptr(fb_ids.as_mut_ptr() as *mut u32, fb_count as u32);
+                r.set_connector_id_ptr(
+                    connector_ids.as_mut_ptr() as *mut u32,
+                    connector_count as u32,
+                );
+                r.set_crtc_id_ptr(crtc_ids.as_mut_ptr() as *mut u32, crtc_count as u32);
+                r.set_encoder_id_ptr(encoder_ids.as_mut_ptr() as *mut u32, encoder_count as u32);
             };
 
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETRESOURCES, &mut r)?;
@@ -383,8 +392,8 @@ impl Card {
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
 
             let plane_count = tmp.count_planes() as usize;
-            let mut plane_ids = vec_with_capacity::<u32>(plane_count)?;
-            unsafe { tmp.set_plane_id_ptr(plane_ids.as_mut_ptr(), plane_count as u32) };
+            let mut plane_ids = vec_with_capacity::<modeset::PlaneId>(plane_count)?;
+            unsafe { tmp.set_plane_id_ptr(plane_ids.as_mut_ptr() as *mut u32, plane_count as u32) };
 
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANERESOURCES, &mut tmp)?;
             if tmp.count_planes() as usize != plane_count {
@@ -403,12 +412,15 @@ impl Card {
     }
 
     /// Read current state information for the connector with the given id.
-    pub fn connector_state(&self, connector_id: u32) -> Result<modeset::ConnectorState, Error> {
+    pub fn connector_state(
+        &self,
+        connector_id: ConnectorId,
+    ) -> Result<modeset::ConnectorState, Error> {
         // Hotplug events can cause the state to change between our calls, so
         // we'll keep retrying until we get a consistent result.
         loop {
             let mut tmp = ioctl::DrmModeGetConnector::zeroed();
-            tmp.connector_id = connector_id;
+            tmp.connector_id = connector_id.0;
             self.ioctl(ioctl::DRM_IOCTL_MODE_GETCONNECTOR, &mut tmp)?;
 
             let mode_count = tmp.count_modes();
@@ -423,7 +435,7 @@ impl Card {
             let mut ret_props = vec_with_capacity::<ModeProp>(prop_count as usize)?;
 
             tmp = ioctl::DrmModeGetConnector::zeroed();
-            tmp.connector_id = connector_id;
+            tmp.connector_id = connector_id.0;
             unsafe {
                 tmp.set_modes_ptr(modes.as_mut_ptr(), mode_count);
                 tmp.set_encoders_ptr(encoder_ids.as_mut_ptr(), encoder_count);
@@ -454,12 +466,16 @@ impl Card {
                 r
             }));
             ret_props.extend(
-                core::iter::zip(prop_ids.iter().copied(), prop_values.iter().copied())
-                    .map(|(prop_id, value)| ModeProp { prop_id, value }),
+                core::iter::zip(prop_ids.iter().copied(), prop_values.iter().copied()).map(
+                    |(prop_id, value)| ModeProp {
+                        prop_id: modeset::PropertyId(prop_id),
+                        value,
+                    },
+                ),
             );
             return Ok(modeset::ConnectorState {
-                id: tmp.connector_id,
-                current_encoder_id: tmp.encoder_id,
+                id: ConnectorId(tmp.connector_id),
+                current_encoder_id: EncoderId(tmp.encoder_id),
                 connector_type: tmp.connector_type.into(),
                 connector_type_id: tmp.connector_type_id,
                 connection_state: tmp.connection.into(),
@@ -474,36 +490,36 @@ impl Card {
     }
 
     /// Read current state information for the encoder with the given id.
-    pub fn encoder_state(&self, encoder_id: u32) -> Result<modeset::EncoderState, Error> {
+    pub fn encoder_state(&self, encoder_id: EncoderId) -> Result<modeset::EncoderState, Error> {
         let mut tmp = ioctl::DrmModeGetEncoder::zeroed();
-        tmp.encoder_id = encoder_id;
+        tmp.encoder_id = encoder_id.0;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETENCODER, &mut tmp)?;
         Ok(EncoderState {
-            encoder_id: tmp.encoder_id,
+            encoder_id: EncoderId(tmp.encoder_id),
             encoder_type: tmp.encoder_type,
-            current_crtc_id: tmp.crtc_id,
+            current_crtc_id: CrtcId(tmp.crtc_id),
             possible_crtcs: tmp.possible_crtcs,
             possible_clones: tmp.possible_clones,
         })
     }
 
     /// Read current state information for the CRTC with the given id.
-    pub fn crtc_state(&self, crtc_id: u32) -> Result<modeset::CrtcState, Error> {
+    pub fn crtc_state(&self, crtc_id: CrtcId) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
-        tmp.crtc_id = crtc_id;
+        tmp.crtc_id = crtc_id.0;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETCRTC, &mut tmp)?;
         Ok(tmp.into())
     }
 
     /// Read current state information for the plane with the given id.
-    pub fn plane_state(&self, plane_id: u32) -> Result<modeset::PlaneState, Error> {
+    pub fn plane_state(&self, plane_id: PlaneId) -> Result<modeset::PlaneState, Error> {
         let mut tmp = ioctl::DrmModeGetPlane::zeroed();
-        tmp.plane_id = plane_id;
+        tmp.plane_id = plane_id.0;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETPLANE, &mut tmp)?;
         Ok(modeset::PlaneState {
-            id: tmp.plane_id,
-            crtc_id: tmp.crtc_id,
-            fb_id: tmp.fb_id,
+            id: PlaneId(tmp.plane_id),
+            crtc_id: CrtcId(tmp.crtc_id),
+            fb_id: FramebufferId(tmp.fb_id),
             possible_crtcs: tmp.possible_crtcs,
             gamma_size: tmp.gamma_size,
         })
@@ -575,18 +591,20 @@ impl Card {
     /// used for software rendering.
     pub fn set_crtc_dumb_buffer(
         &mut self,
-        crtc_id: u32,
+        crtc_id: CrtcId,
         buf: &modeset::DumbBuffer,
         mode: &ModeInfo,
-        conn_ids: &[u32],
+        conn_ids: &[ConnectorId],
     ) -> Result<modeset::CrtcState, Error> {
         let mut tmp = ioctl::DrmModeCrtc::zeroed();
-        tmp.crtc_id = crtc_id;
+        tmp.crtc_id = crtc_id.0;
         if conn_ids.len() > (u32::MAX as usize) {
             return Err(Error::Invalid);
         }
-        unsafe { tmp.set_set_connectors_ptr(conn_ids.as_ptr(), conn_ids.len() as u32) };
-        tmp.fb_id = buf.fb_id;
+        unsafe {
+            tmp.set_set_connectors_ptr(conn_ids.as_ptr() as *const u32, conn_ids.len() as u32)
+        };
+        tmp.fb_id = buf.fb_id.0;
         tmp.mode = mode.into();
         tmp.mode_valid = 1;
 
@@ -598,13 +616,13 @@ impl Card {
     /// from the given "dumb buffer".
     pub fn crtc_page_flip_dumb_buffer(
         &mut self,
-        crtd_id: u32,
+        crtd_id: CrtcId,
         buf: &modeset::DumbBuffer,
         flags: modeset::PageFlipFlags,
     ) -> Result<(), Error> {
         let mut tmp = ioctl::DrmModeCrtcPageFlip::zeroed();
-        tmp.crtc_id = crtd_id;
-        tmp.fb_id = buf.fb_id;
+        tmp.crtc_id = crtd_id.0;
+        tmp.fb_id = buf.fb_id.0;
         tmp.flags = flags.into();
         self.ioctl(ioctl::DRM_IOCTL_MODE_PAGE_FLIP, &mut tmp)?;
         Ok(())
@@ -666,8 +684,8 @@ impl Card {
             pitch: buf_req.pitch,
             ptr: buf_ptr as *mut u8,
             len: buf_req.size as usize,
-            fb_id: fb_req.fb_id,
-            buffer_handle: buf_req.handle,
+            fb_id: FramebufferId(fb_req.fb_id),
+            buffer_handle: BufferObjectId(buf_req.handle),
             file: Arc::downgrade(&self.f),
         })
     }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use linux_drm::{
-    modeset::{ModeProp, ObjectId, PropertyType},
+    modeset::{ModeProp, ObjectId, PropertyId, PropertyType},
     result::Error,
     Card, ClientCap, DeviceCap,
 };
@@ -40,44 +40,40 @@ fn show_properties(card: &Card) -> Result<(), Error> {
     println!("");
 
     for conn_id in res.connector_ids {
-        println!("Connector #{conn_id}:");
-        if let Err(e) =
-            show_object_property_list(ObjectId::Connector(conn_id), &mut prop_meta, card)
-        {
+        println!("Connector #{conn_id:?}:");
+        if let Err(e) = show_object_property_list(conn_id, &mut prop_meta, card) {
             println!("  Error: {e:?}");
         }
         println!("");
     }
 
     for enc_id in res.encoder_ids {
-        println!("Encoder #{enc_id}:");
-        if let Err(e) = show_object_property_list(ObjectId::Encoder(enc_id), &mut prop_meta, card) {
+        println!("Encoder #{enc_id:?}:");
+        if let Err(e) = show_object_property_list(enc_id, &mut prop_meta, card) {
             println!("  Error: {e:?}");
         }
         println!("");
     }
 
     for crtc_id in res.crtc_ids {
-        println!("CRTC #{crtc_id}:");
-        if let Err(e) = show_object_property_list(ObjectId::Crtc(crtc_id), &mut prop_meta, card) {
+        println!("CRTC #{crtc_id:?}:");
+        if let Err(e) = show_object_property_list(crtc_id, &mut prop_meta, card) {
             println!("  Error: {e:?}");
         }
         println!("");
     }
 
     for fb_id in res.fb_ids {
-        println!("Framebuffer #{fb_id}:");
-        if let Err(e) =
-            show_object_property_list(ObjectId::Framebuffer(fb_id), &mut prop_meta, card)
-        {
+        println!("Framebuffer #{fb_id:?}:");
+        if let Err(e) = show_object_property_list(fb_id, &mut prop_meta, card) {
             println!("  Error: {e:?}");
         }
         println!("");
     }
 
     for plane_id in res.plane_ids {
-        println!("Plane #{plane_id}:");
-        if let Err(e) = show_object_property_list(ObjectId::Plane(plane_id), &mut prop_meta, card) {
+        println!("Plane #{plane_id:?}:");
+        if let Err(e) = show_object_property_list(plane_id, &mut prop_meta, card) {
             println!("  Error: {e:?}");
         }
         println!("");
@@ -87,7 +83,7 @@ fn show_properties(card: &Card) -> Result<(), Error> {
 }
 
 fn show_object_property_list(
-    id: ObjectId,
+    id: impl Into<ObjectId>,
     prop_meta: &mut HashMap<u32, PropertyMeta>,
     card: &Card,
 ) -> Result<(), Error> {
@@ -146,11 +142,11 @@ fn show_property_list(
 }
 
 fn property_meta<'a, 'card>(
-    prop_id: u32,
+    prop_id: PropertyId,
     prop_meta: &'a mut HashMap<u32, PropertyMeta>,
     card: &Card,
 ) -> Result<&'a PropertyMeta, Error> {
-    Ok(prop_meta.entry(prop_id).or_insert_with(|| {
+    Ok(prop_meta.entry(prop_id.0).or_insert_with(|| {
         card.property_meta(prop_id)
             .map(|meta| {
                 let mut enum_names = BTreeMap::new();

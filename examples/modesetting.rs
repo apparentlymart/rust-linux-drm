@@ -1,8 +1,8 @@
 use linux_drm::{
     event::{DrmEvent, GenericDrmEvent},
     modeset::{
-        CardResources, ConnectionState, ConnectorState, DumbBuffer, DumbBufferRequest, ModeInfo,
-        PageFlipFlags,
+        CardResources, ConnectionState, ConnectorId, ConnectorState, CrtcId, DumbBuffer,
+        DumbBufferRequest, ModeInfo, PageFlipFlags,
     },
     result::Error,
     Card, DeviceCap,
@@ -57,7 +57,7 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
         }
 
         println!(
-            "configuring CRTC {} for framebuffer {} and mode {mode_name} on connection {}",
+            "configuring CRTC {:?} for framebuffer {:?} and mode {mode_name} on connection {:?}",
             output.crtc_id,
             output.db.framebuffer_id(),
             conn.id
@@ -94,7 +94,7 @@ fn prepare_outputs(card: &Card) -> Result<Vec<Output>, Error> {
             println!("ignoring unconnected connector {id:?}");
             continue;
         }
-        if conn.current_encoder_id == 0 {
+        if conn.current_encoder_id.0 == 0 {
             println!("ignoring encoderless connector {id:?}");
             continue;
         }
@@ -115,7 +115,7 @@ fn prepare_output(
     conn: ConnectorState,
     resources: &CardResources,
 ) -> Result<Output, Error> {
-    if conn.current_encoder_id == 0 {
+    if conn.current_encoder_id.0 == 0 {
         // It could be reasonable to go hunting for a suitable encoder and
         // CRTC to activate this connector, but for this simple example
         // we'll just use whatever connectors are already producing some
@@ -146,8 +146,8 @@ fn prepare_output(
 struct Output {
     db: DumbBuffer,
     mode: ModeInfo,
-    conn_id: u32,
-    crtc_id: u32,
+    conn_id: ConnectorId,
+    crtc_id: CrtcId,
 }
 
 fn map_init_err(e: linux_drm::result::InitError) -> std::io::Error {

@@ -4,9 +4,15 @@ use alloc::vec::Vec;
 
 use crate::ioctl::DrmCardDevice;
 
+use super::{ConnectorId, CrtcId, EncoderId, FramebufferId, PlaneId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct PropertyId(pub u32);
+
 #[derive(Debug)]
 pub struct ModeProp {
-    pub prop_id: u32,
+    pub prop_id: PropertyId,
     pub value: u64,
 }
 
@@ -54,8 +60,8 @@ impl<'card> ObjectPropMeta<'card> {
     }
 
     #[inline]
-    pub fn property_id(&self) -> u32 {
-        self.raw.prop_id
+    pub fn property_id(&self) -> PropertyId {
+        PropertyId(self.raw.prop_id)
     }
 
     pub fn name(&self) -> &str {
@@ -287,6 +293,34 @@ trivial_as_property_value!(i16);
 trivial_as_property_value!(i8);
 trivial_as_property_value!(isize);
 trivial_as_property_value!(bool);
+
+macro_rules! id_as_property_value {
+    ($t:ty) => {
+        impl AsRawPropertyValue for $t {
+            #[inline(always)]
+            fn as_raw_property_value(&self) -> u64 {
+                self.0 as u64
+            }
+        }
+        impl IntoRawPropertyValue for $t {
+            #[inline(always)]
+            fn into_raw_property_value(self) -> (u64, Option<Box<dyn core::any::Any>>) {
+                (self.0 as u64, None)
+            }
+        }
+    };
+}
+
+id_as_property_value!(CrtcId);
+id_as_property_value!(ConnectorId);
+id_as_property_value!(FramebufferId);
+id_as_property_value!(BlobId);
+id_as_property_value!(EncoderId);
+id_as_property_value!(PlaneId);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct BlobId(pub u32);
 
 /// A handle for a live property blob.
 ///

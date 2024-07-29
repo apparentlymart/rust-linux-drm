@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use core::iter;
 use core::ops::BitOr;
 
-use super::{IntoRawPropertyValue, ObjectId};
+use super::{IntoRawPropertyValue, ObjectId, PropertyId};
 
 /// An atomic modesetting commit request.
 #[derive(Debug)]
@@ -57,11 +57,11 @@ impl AtomicRequest {
 
     pub fn set_property(
         &mut self,
-        obj_id: ObjectId,
-        prop_id: u32,
+        obj_id: impl Into<ObjectId>,
+        prop_id: PropertyId,
         value: impl IntoRawPropertyValue,
     ) {
-        fn set(req: &mut AtomicRequest, obj_id: ObjectId, prop_id: u32, value: u64) {
+        fn set(req: &mut AtomicRequest, obj_id: ObjectId, prop_id: PropertyId, value: u64) {
             let (_, obj_id) = obj_id.as_raw_type_and_id();
             let obj = req.objs.entry(obj_id).or_insert_with(|| AtomicRequestObj {
                 prop_ids: Vec::new(),
@@ -73,7 +73,7 @@ impl AtomicRequest {
             obj.prop_ids.reserve(1);
             obj.prop_values.reserve(1);
 
-            obj.prop_ids.push(prop_id);
+            obj.prop_ids.push(prop_id.0);
             obj.prop_values.push(value);
             req.total_props += 1; // panics if request contains more than u32::MAX total properties
             if req.objs.len() > (u32::MAX as usize) {
@@ -84,7 +84,7 @@ impl AtomicRequest {
         if let Some(drop) = drop {
             self.drops.push(drop);
         }
-        set(self, obj_id, prop_id, raw_v);
+        set(self, obj_id.into(), prop_id, raw_v);
     }
 
     pub(crate) fn for_ioctl_req(&self) -> AtomicRequestRawParts {

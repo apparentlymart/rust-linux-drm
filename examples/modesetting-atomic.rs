@@ -1,8 +1,8 @@
 use linux_drm::{
     event::{DrmEvent, GenericDrmEvent},
     modeset::{
-        AtomicCommitFlags, CardResources, ConnectionState, ConnectorState, DumbBuffer,
-        DumbBufferRequest, ModeInfo, ObjectId,
+        AtomicCommitFlags, CardResources, ConnectionState, ConnectorId, ConnectorState, CrtcId,
+        DumbBuffer, DumbBufferRequest, ModeInfo, ObjectId, PlaneId, PropertyId,
     },
     result::Error,
     Card, ClientCap, DeviceCap,
@@ -63,7 +63,7 @@ fn display_demo(card: &mut Card) -> Result<(), Error> {
         }
 
         println!(
-            "configuring CRTC {} for framebuffer {} and mode {mode_name} on connector {}",
+            "configuring CRTC {:?} for framebuffer {:?} and mode {mode_name} on connector {:?}",
             output.crtc_id,
             output.db.framebuffer_id(),
             conn.id
@@ -163,14 +163,14 @@ fn prepare_outputs(card: &Card) -> Result<Vec<Output>, Error> {
     let mut outputs = Vec::<Output>::new();
 
     for id in resources.connector_ids.iter().copied() {
-        println!("preparing output for connector #{id}");
+        println!("preparing output for connector #{id:?}");
 
         let conn = card.connector_state(id)?;
         if conn.connection_state != ConnectionState::Connected {
             println!("ignoring unconnected connector {id:?}");
             continue;
         }
-        if conn.current_encoder_id == 0 {
+        if conn.current_encoder_id.0 == 0 {
             println!("ignoring encoderless connector {id:?}");
             continue;
         }
@@ -191,7 +191,7 @@ fn prepare_output(
     conn: ConnectorState,
     resources: &CardResources,
 ) -> Result<Output, Error> {
-    if conn.current_encoder_id == 0 {
+    if conn.current_encoder_id.0 == 0 {
         // It could be reasonable to go hunting for a suitable encoder and
         // CRTC to activate this connector, but for this simple example
         // we'll just use whatever connectors are already producing some
@@ -216,7 +216,7 @@ fn prepare_output(
     // now just to test if anything is working here at all. (This makes some
     // assumptions about how the card is already configured which might not
     // actually hold in practice.)
-    let mut chosen_plane_id: Option<u32> = None;
+    let mut chosen_plane_id: Option<PlaneId> = None;
     for plane_id in resources.plane_ids.iter().copied() {
         let plane = card.plane_state(plane_id)?;
         if plane.crtc_id == crtc_id {
@@ -250,26 +250,23 @@ fn prepare_output(
 struct Output {
     db: DumbBuffer,
     mode: ModeInfo,
-    conn_id: u32,
+    conn_id: ConnectorId,
     conn_prop_ids: ConnectorPropIds,
-    crtc_id: u32,
+    crtc_id: CrtcId,
     crtc_prop_ids: CrtcPropIds,
-    plane_id: u32,
+    plane_id: PlaneId,
     plane_prop_ids: PlanePropIds,
 }
 
 #[derive(Debug)]
 struct ConnectorPropIds {
-    crtc_id: u32,
+    crtc_id: PropertyId,
 }
 
 impl ConnectorPropIds {
-    pub fn new(conn_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+    pub fn new(conn_id: ConnectorId, card: &linux_drm::Card) -> Result<Self, Error> {
         let mut ret: Self = unsafe { core::mem::zeroed() };
-        card.each_object_property_meta(
-            linux_drm::modeset::ObjectId::Connector(conn_id),
-            |meta, _| ret.populate_from(meta),
-        )?;
+        card.each_object_property_meta(conn_id, |meta, _| ret.populate_from(meta))?;
         Ok(ret)
     }
 
@@ -283,11 +280,11 @@ impl ConnectorPropIds {
 
 #[derive(Debug)]
 struct CrtcPropIds {
-    active: u32,
+    active: PropertyId,
 }
 
 impl CrtcPropIds {
-    pub fn new(crtc_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+    pub fn new(crtc_id: CrtcId, card: &linux_drm::Card) -> Result<Self, Error> {
         let mut ret: Self = unsafe { core::mem::zeroed() };
         card.each_object_property_meta(linux_drm::modeset::ObjectId::Crtc(crtc_id), |meta, _| {
             ret.populate_from(meta)
@@ -305,31 +302,28 @@ impl CrtcPropIds {
 
 #[derive(Debug)]
 struct PlanePropIds {
-    typ: u32,
-    fb_id: u32,
-    crtc_id: u32,
-    crtc_x: u32,
-    crtc_y: u32,
-    crtc_w: u32,
-    crtc_h: u32,
-    src_x: u32,
-    src_y: u32,
-    src_w: u32,
-    src_h: u32,
+    typ: PropertyId,
+    fb_id: PropertyId,
+    crtc_id: PropertyId,
+    crtc_x: PropertyId,
+    crtc_y: PropertyId,
+    crtc_w: PropertyId,
+    crtc_h: PropertyId,
+    src_x: PropertyId,
+    src_y: PropertyId,
+    src_w: PropertyId,
+    src_h: PropertyId,
 }
 
 impl PlanePropIds {
-    pub fn new(plane_id: u32, card: &linux_drm::Card) -> Result<Self, Error> {
+    pub fn new(plane_id: PlaneId, card: &linux_drm::Card) -> Result<Self, Error> {
         let mut ret: Self = unsafe { core::mem::zeroed() };
-        card.each_object_property_meta(
-            linux_drm::modeset::ObjectId::Plane(plane_id),
-            |meta, _| ret.populate_from(meta),
-        )?;
+        card.each_object_property_meta(plane_id, |meta, _| ret.populate_from(meta))?;
         Ok(ret)
     }
 
     pub fn populate_from<'card>(&mut self, from: linux_drm::modeset::ObjectPropMeta<'card>) {
-        let field: &mut u32 = match from.name() {
+        let field: &mut PropertyId = match from.name() {
             "type" => &mut self.typ,
             "FB_ID" => &mut self.fb_id,
             "CRTC_ID" => &mut self.crtc_id,
