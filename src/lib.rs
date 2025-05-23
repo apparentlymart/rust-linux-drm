@@ -1,6 +1,23 @@
+//! This library provides relatively-low-level bindings to the Linux Direct
+//! Rendering Manager and Kernel Modesetting APIs.
+//!
+//! This library currently focuses mainly on the modesetting APIs. Rendering
+//! requires driver-specific userspace code that is beyond the scope of
+//! this library.
+//!
+//! # Features
+//!
+//! The default implementation of this library currently relies on unstable
+//! features and so requires nightly Rust. The feature `stable_polyfill`
+//! opts in to replacing those unstable features with external libraries to
+//! allow this to work on stable Rust. This feature will be maintained on a
+//! best-effort basis but will be removed in future versions if it causes
+//! maintainence challenges. It will also be removed once the relevant features
+//! have been stablized.
+
 #![no_std]
-#![feature(ptr_metadata)]
-#![feature(ascii_char)]
+#![cfg_attr(not(feature = "stable_polyfill"), feature(ptr_metadata))]
+#![cfg_attr(not(feature = "stable_polyfill"), feature(ascii_char))]
 
 extern crate alloc;
 
