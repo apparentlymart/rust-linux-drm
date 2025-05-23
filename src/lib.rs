@@ -682,7 +682,7 @@ impl Card {
 
         let buf_ptr = unsafe {
             self.f.mmap_raw(
-                map_req.offset as i64,
+                map_req.offset as _,
                 buf_req.size as usize,
                 null_mut(),
                 0b11, // PROT_READ | PROT_WRITE,

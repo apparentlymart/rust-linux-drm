@@ -11,7 +11,7 @@ pub struct DrmCardDevice;
 
 impl IoDevice for DrmCardDevice {}
 
-const DRM_IOCTL_BASE: u64 = 100;
+const DRM_IOCTL_BASE: ulong = 100;
 
 #[allow(non_snake_case)]
 const fn _IO(nr: ulong) -> ulong {
@@ -20,17 +20,17 @@ const fn _IO(nr: ulong) -> ulong {
 
 #[allow(non_snake_case)]
 const fn _IOW<T>(nr: ulong) -> ulong {
-    linux_io::fd::ioctl::_IOW(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as u64)
+    linux_io::fd::ioctl::_IOW(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as _)
 }
 
 #[allow(non_snake_case)]
 const fn _IOR<T>(nr: ulong) -> ulong {
-    linux_io::fd::ioctl::_IOR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as u64)
+    linux_io::fd::ioctl::_IOR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as _)
 }
 
 #[allow(non_snake_case)]
 const fn _IOWR<T>(nr: ulong) -> ulong {
-    linux_io::fd::ioctl::_IOWR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as u64)
+    linux_io::fd::ioctl::_IOWR(DRM_IOCTL_BASE, nr, core::mem::size_of::<T>() as _)
 }
 
 /// Fixed-point unsigned 16.16-bit number type, represented as [`u32`].
