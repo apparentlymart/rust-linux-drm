@@ -10,7 +10,12 @@ repository = "https://github.com/apparentlymart/rust-linux-drm"
 [dependencies]
 linux-io = "0.11.0"
 linux-unsafe = "0.11.0"
+ptr_meta = { version = "0.3", optional = true }
+ascii = { version = "1.1", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+stable_polyfill = ["dep:ptr_meta", "dep:ascii"]
