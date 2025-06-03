@@ -868,6 +868,7 @@ pub enum ClientCap {
     Atomic = ioctl::DRM_CLIENT_CAP_ATOMIC.0,
     AspectRatio = ioctl::DRM_CLIENT_CAP_ASPECT_RATIO.0,
     WritebackConnectors = ioctl::DRM_CLIENT_CAP_WRITEBACK_CONNECTORS.0,
+    CursorPlaneHotspot = ioctl::DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT.0,
 }
 
 impl From<ClientCap> for ioctl::DrmClientCap {
