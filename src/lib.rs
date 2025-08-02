@@ -187,7 +187,7 @@ impl Card {
     pub fn property_meta(
         &self,
         prop_id: modeset::PropertyId,
-    ) -> Result<modeset::ObjectPropMeta, Error> {
+    ) -> Result<modeset::ObjectPropMeta<'_>, Error> {
         let mut tmp = ioctl::DrmModeGetProperty::zeroed();
         tmp.prop_id = prop_id.0;
         self.ioctl(ioctl::DRM_IOCTL_MODE_GETPROPERTY, &mut tmp)?;
